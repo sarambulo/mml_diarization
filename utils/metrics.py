@@ -57,7 +57,7 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     metrics["FA"] = float(df.FA.mean())
     metrics["FAR"] = float(df.FA.sum() / df.totalDuration.sum())
     metrics["SE"] = float(df.SE.mean())
-    metrics["SE"] = float(df.SE.sum() / df.totalDuration.sum())
+    metrics["SER"] = float(df.SE.sum() / df.totalDuration.sum())
 
     metrics["metricsByVideo"] = metricsByVideo
 
