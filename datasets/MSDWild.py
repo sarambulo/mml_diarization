@@ -7,7 +7,9 @@ import numpy as np
 class MSDWild(Dataset):
    def __init__(self, data_path: str, partition = str, clip_length = None, frames = None, fps = 25):
       """
+      :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
+      :param clip_length float: duration to limit each clip in seconds
       """
       self.data_path = data_path
       # Parse the rttm file to extract the file ids and labels
