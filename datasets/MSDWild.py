@@ -39,8 +39,6 @@ from torch.utils.data import Dataset
 from pathlib import Path
 from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
-from ultralytics import YOLO
-import cv2
 import random
 import torch
 import torchaudio
@@ -67,14 +65,12 @@ class MSDWildBase(Dataset):
       root = Path(self.data_path, 'msdwild_boundingbox_labels')
       video_path = root / f'{file_id}.mp4'
       csv_path = root / f'{file_id}.csv'
-      # TODO: parse csv
-      csv = None
       # Get video and audio streams
       video_stream, audio_stream, metadata = get_streams(video_path)
       # TODO: extract labels from rttm file
       labels = self.rttm_data[file_id]
-      # TODO: load csv
-      bounding_boxes = None
+      # Load bounding boxes from csv
+      bounding_boxes =self.parse_bounding_boxes(csv_path)
       return video_stream, audio_stream, labels, bounding_boxes
 
 
@@ -118,14 +114,6 @@ class MSDWildFrames(MSDWildBase):
    def __len__(self):
       return len(self.frame_ids)
    
-   def parse_bounding_boxes(self, file_id):
-        csv_path = self.data_path / 'msdwild_boundingbox_labels' / f'{file_id}.csv'
-        if csv_path.exists():
-            df = pd.read_csv(csv_path, header=None) 
-            df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
-            return df
-        return None
-   
    def extract_faces_from_frame(self, frame, bounding_boxes, frame_id):
       if bounding_boxes is None:
          return {}
@@ -158,25 +146,18 @@ class MSDWildFrames(MSDWildBase):
       next_frame = bounding_boxes[(bounding_boxes["frame_id"] > frame_id) & (bounding_boxes["face_id"] == face_id)]
       if not next_frame.empty:
          next_frame_id = next_frame.iloc[0]["frame_id"]
-         return self.get_anchor(self.frame_ids.index((file_id, next_frame_id)))
+         anchor,_=self.get_features(self.frame_ids.index((file_id, next_frame_id)))
+         return anchor
       return None
    
    def get_negative_sample(self, file_id, face_id): #TODO
-      negative_candidates = []
-      for fid in self.file_ids:
-         bounding_boxes = self.parse_bounding_boxes(fid)
-         if bounding_boxes is None:
-            continue
-         different_faces = bounding_boxes[bounding_boxes["face_id"] != face_id]
-         if not different_faces.empty:
-            negative_candidates.append(different_faces)
-
-      if negative_candidates:
-         neg_sample = random.choice(negative_candidates).iloc[0]
-         return self.__getitem__(self.frame_ids.index((neg_sample["frame_id"], neg_sample["face_id"])))
-      return None
+      random_frame_id = random.choice(self.frame_ids)
+      while self.frame_ids[random_frame_id][0]==file_id:
+         random_frame_id = random.choice(self.frame_ids)
+      anchor, _ =self.get_features(random_frame_id)
+      return anchor
    
-   def get_anchor(self, index):
+   def get_features(self, index):
          file_id, frame_timestamp = self.frame_ids[index]
          video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames).__getitem__(file_id)
          # Get frame from video stream
