@@ -86,20 +86,34 @@ class MSDWildFrames(MSDWildBase):
       :param partition str: few_train, few_val or many_val
       """
       super(MSDWildFrames).__init__(data_path, partition)
-      # TODO: Adding IDs to frames
+      # Adding IDs to frames
       # Frame IDs are the position of each frame in this list
-      self.frame_ids = []
-      self._populate_frame_ids()
-      # Each position holds the file ID and the frame timestamp (for seek)
-      # Iterate over file ids
-      # Append file ID and timestamp for each frame
-      # TODO: If transforms is provided, check that is a dictionary with
+      # Each element of the list contains the file ID and the frame timestamp (for seek)
+      self.frame_ids = self.get_frame_ids()
+      # If transforms is provided, check that is a dictionary with
       # keys: 'video_frame', 'face', and 'audio_segment'
-      self.transform = transforms
+      self.transform = None
+      if transforms:
+         assert isinstance(transforms, dict)
+         assert 'video_frame' in transforms
+         assert 'face' in transforms
+         assert 'audio_segment' in transforms
+         self.transform = transforms
 
-   def _populate_frame_ids(self):
-        # TODO
-        return NotImplemented
+   def get_frame_ids(self):
+      frame_ids_path = Path(self.data_path, 'frame_ids.csv')
+      if frame_ids_path.exists:
+         return pd.read_csv(frame_ids_path)
+      else:
+         # Iterate over file ids
+         frame_ids = []
+         for file_id in self.file_ids:
+            video_stream = super(MSDWildBase).__getitem__(file_id)[0]
+            # Append file ID and timestamp for each frame
+            for frame in video_stream:
+               frame_ids.append((file_id, frame['pts']))
+         frame_ids = np.array(frame_ids)
+         return frame_ids
         
    def __len__(self):
       return len(self.frame_ids)
@@ -115,7 +129,7 @@ class MSDWildFrames(MSDWildBase):
    def extract_faces_from_frame(self, frame, bounding_boxes, frame_id):
       if bounding_boxes is None:
          return {}
-      frame_boxes =bounding_boxes[bounding_boxes["frame_id"] == frame_id]
+      frame_boxes = bounding_boxes[bounding_boxes["frame_id"] == frame_id]
       cropped_faces = {}
       for _, row in frame_boxes.iterrows():
          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
@@ -179,9 +193,9 @@ class MSDWildFrames(MSDWildBase):
 
    def __getitem__(self, index):
       file_id, frame_timestamp = self.frame_ids[index]
-      anchor, face_id= self.get_anchor(index)
-      positive_pair =self.get_positive_sample(file_id, frame_timestamp, face_id) 
-      negative_pair =self.get_negative_sample(file_id, face_id)
+      anchor, face_id = self.get_anchor(index)
+      positive_pair = self.get_positive_sample(file_id, frame_timestamp, face_id) 
+      negative_pair = self.get_negative_sample(file_id, face_id)
       return anchor, positive_pair, negative_pair
    
    def build_batch(self, batch_examples: list):
