@@ -4,6 +4,9 @@ data/
 # VS Code
 .vscode/
 
+# Sandbox
+sandbox.ipynb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

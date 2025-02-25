@@ -3,6 +3,7 @@ from pathlib import Path
 from torchvision.io import VideoReader
 import torch
 import itertools
+import re
 
 def parse_rttm(path) -> np.array:
     """
@@ -10,11 +11,11 @@ def parse_rttm(path) -> np.array:
     """
     path = Path(path)
     if not path.exists():
-        return None
+        raise FileExistsError(f'file {path} not found')
     with open(path, "r") as file:
         records = file.readlines()
     records = [line.split(" ") for line in records]
-    records = [(line[1], line[3], line[4], line[7]) for line in records]
+    records = [(line[1], line[3], line[4], line[7]) for line in records if line[7].isnumeric()]
     data = {}
     for record in records:
         file_id = record[0]
@@ -22,11 +23,11 @@ def parse_rttm(path) -> np.array:
             data[file_id] = [record[1:]]
         else:
             data[file_id].append(record[1:])
-    data = {file_id: np.array(data[file_id]) for file_id in data}
+    data = {file_id: (np.array(data[file_id])[:, :2].astype(float), np.array(data[file_id])[:, 2].astype(int)) for file_id in data}
     return data
 
 
-def read_video(path: str, start_sec=0, end_sec=None, return_video=True, return_audio=True):
+def read_video(path: str, start_sec=0, end_sec=None, max_frames=None, return_video=True, return_audio=True):
     """
     :return data: (
         video_frames,
@@ -58,6 +59,9 @@ def read_video(path: str, start_sec=0, end_sec=None, return_video=True, return_a
     video_timestamps = []
     if return_video:
         stream.set_current_stream("video")
+        if max_frames is not None:
+            fps = stream.get_metadata()['video']['fps'][0]
+            end_sec = min(end_sec, max_frames / fps)
         frames = []
         # Read from start to end
         for frame in itertools.takewhile(
@@ -67,6 +71,7 @@ def read_video(path: str, start_sec=0, end_sec=None, return_video=True, return_a
             video_timestamps.append(frame["pts"])
         if len(frames) > 0:
             video_frames = torch.stack(frames, 0)
+    video_timestamps = torch.tensor(video_timestamps)
 
     audio_frames = torch.empty(0)
     audio_timestamps = []
@@ -77,12 +82,14 @@ def read_video(path: str, start_sec=0, end_sec=None, return_video=True, return_a
             lambda x: x["pts"] <= end_sec, stream.seek(start_sec)
         ):
             frames.append(frame["data"])
-            video_timestamps.append(frame["pts"])
+            audio_timestamps.append(frame["pts"])
         if len(frames) > 0:
             audio_frames = torch.cat(frames, 0)
+    audio_timestamps = torch.tensor(audio_timestamps)
     return (
         video_frames,
+        video_timestamps,
         audio_frames,
-        (video_timestamps, audio_timestamps),
+        audio_timestamps,
         stream.get_metadata(),
     )
