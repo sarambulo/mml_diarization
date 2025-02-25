@@ -37,7 +37,7 @@ another active speaker.
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
-from .utils import parse_rttm, read_video
+from .utils import get_streams, parse_rttm, read_video
 import numpy as np
 from ultralytics import YOLO
 import cv2
@@ -64,10 +64,13 @@ class MSDWildBase(Dataset):
       return len(self.file_ids)
    def __getitem__(self, index):
       file_id = self.file_ids[index]
-      # TODO: correct path and retrieve csv
-      video_path = Path(self.data_path, 'msdwild_boundingbox_labels', file_id, f'{file_id}.mp4')
-      # TODO: get video and audio streams
-      video_stream, audio_stream, metadata = (None, None, None)
+      root = Path(self.data_path, 'msdwild_boundingbox_labels')
+      video_path = root / f'{file_id}.mp4'
+      csv_path = root / f'{file_id}.csv'
+      # TODO: parse csv
+      csv = None
+      # Get video and audio streams
+      video_stream, audio_stream, metadata = get_streams(video_path)
       # TODO: extract labels from rttm file
       labels = self.rttm_data[file_id]
       # TODO: load csv
