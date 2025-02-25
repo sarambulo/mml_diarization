@@ -136,7 +136,7 @@ class MSDWildFrames(MSDWildBase):
         return waveform[:, start_sample:end_sample]  # Extract segment
 
    def get_positive_sample(self, file_id, current_timestamp):
-      return NotImplemented
+      frame_next=
    def get_negative_sample(self, file_id):
       return NotImplemented
    def __getitem__(self, index):
@@ -162,7 +162,7 @@ class MSDWildFrames(MSDWildBase):
       label = labels[0] if labels else None
       # TODO: Select positive and negative pairs
       anchor = (video_frame, audio_segment, label, face)
-      positive_pair =self.get_positive_sample(file_id, frame_timestamp)
+      positive_pair =self.get_positive_sample(file_id, face_id, frame_timestamp) 
       negative_pair =self.get_negative_sample(file_id)
       return anchor, positive_pair, negative_pair
    
@@ -175,29 +175,29 @@ class MSDWildFrames(MSDWildBase):
          feature = torch.stack(feature, axis=0)
       return tuple([feature for feature in features])
 
-class MSDWildVideos(MSDWildBase):
-   def __init__(self, data_path: str, partition: str, transforms, max_length = None, max_video_frames = None):
-      """
-      :param data_path str: path to the directory where the data is stored 
-      :param partition str: few_train, few_val or many_val
-      :param max_length float: Each video and audio will be clipped to this duration in seconds
-      :param max_video_frames int: If `max_video_frames / FPS` is lower than `max_length`, clip videos
-         and audios to `max_video_frames / FPS` seconds
-      """
-      super(MSDWildFrames).__init__(data_path, partition)
-      # Store configuration for generating segments
-      self.transform = transform
-      self.max_video_frames = max_video_frames
-      self.max_length = max_length # Also frames / fps
-   def __len__(self):
-      return len(self.file_ids)
-   def __getitem__(self, index):
-      return NotImplemented
-   def build_batch(self, batch_examples: list):
-      # TODO: Add padding
-      return NotImplemented
-      features = list(zip(*batch_examples))
-      for feature in features:
-         feature = [torch.tensor(example) for example in feature]
-         feature = torch.stack(feature, axis=0)
-      return tuple([feature for feature in features])
+# class MSDWildVideos(MSDWildBase):
+#    def __init__(self, data_path: str, partition: str, transforms, max_length = None, max_video_frames = None):
+#       """
+#       :param data_path str: path to the directory where the data is stored 
+#       :param partition str: few_train, few_val or many_val
+#       :param max_length float: Each video and audio will be clipped to this duration in seconds
+#       :param max_video_frames int: If `max_video_frames / FPS` is lower than `max_length`, clip videos
+#          and audios to `max_video_frames / FPS` seconds
+#       """
+#       super(MSDWildFrames).__init__(data_path, partition)
+#       # Store configuration for generating segments
+#       self.transform = transform
+#       self.max_video_frames = max_video_frames
+#       self.max_length = max_length # Also frames / fps
+#    def __len__(self):
+#       return len(self.file_ids)
+#    def __getitem__(self, index):
+#       return NotImplemented
+#    def build_batch(self, batch_examples: list):
+#       # TODO: Add padding
+#       return NotImplemented
+#       features = list(zip(*batch_examples))
+#       for feature in features:
+#          feature = [torch.tensor(example) for example in feature]
+#          feature = torch.stack(feature, axis=0)
+#       return tuple([feature for feature in features])
