@@ -39,6 +39,12 @@ from torch.utils.data import Dataset
 from pathlib import Path
 from .utils import parse_rttm, read_video
 import numpy as np
+from ultralytics import YOLO
+import cv2
+import random
+import torch
+import torchaudio
+
 
 class MSDWildBase(Dataset):
    def __init__(self, data_path: str, partition = str):
@@ -76,40 +82,90 @@ class MSDWildFrames(MSDWildBase):
       :param partition str: few_train, few_val or many_val
       """
       super(MSDWildFrames).__init__(data_path, partition)
-      # TODO: Assing IDs to frames
+      # TODO: Adding IDs to frames
       # Frame IDs are the position of each frame in this list
       self.frame_ids = []
+      self._populate_frame_ids()
       # Each position holds the file ID and the frame timestamp (for seek)
       # Iterate over file ids
       # Append file ID and timestamp for each frame
       # TODO: If transforms is provided, check that is a dictionary with
       # keys: 'video_frame', 'face', and 'audio_segment'
       self.transform = transforms
+      self.face_detector=YOLO("yolov8n-face.pt")
+
+   def _populate_frame_ids(self):
+        """
+        Populate self.frame_ids with (file_id, frame_timestamp) tuples for all videos.
+        """
+        for file_id in self.file_ids:
+            video_path = self.data_path / 'msdwild_boundingbox_labels' / file_id / f'{file_id}.mp4'
+            if not video_path.exists():
+                continue
+
+            cap = cv2.VideoCapture(str(video_path))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            for frame_idx in range(frame_count):
+                timestamp = frame_idx / fps  # Convert frame index to timestamp
+                self.frame_ids.append((file_id, timestamp))
+            
+            cap.release()
    def __len__(self):
       return len(self.frame_ids)
+   def extract_faces_from_frame(self, frame):
+        results = self.face_detector(frame)
+        cropped_faces = []
+
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])  
+                cropped_face = frame[y1:y2, x1:x2]  # Crop face
+                cropped_faces.append(cropped_face)
+        return cropped_faces
+   
+   def get_audio_segment(self, audio_stream, timestamp, segment_duration=1.0):
+        if not audio_stream:
+            return None
+
+        waveform, sample_rate = torchaudio.load(audio_stream)  # Load as tensor
+        start_sample = int(timestamp * sample_rate)
+        end_sample = start_sample + int(segment_duration * sample_rate)
+
+        return waveform[:, start_sample:end_sample]  # Extract segment
+
+   def get_positive_sample(self, file_id, current_timestamp):
+      return NotImplemented
+   def get_negative_sample(self, file_id):
+      return NotImplemented
    def __getitem__(self, index):
       file_id, frame_timestamp = self.frame_ids[index]
       video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames).__getitem__(file_id)
       # TODO: get frame from video stream
       video_frame = None
-      # TODO: extract faces from frame using bounding box
-      cropped_faces = None
+      cropped_faces = self.extract_faces_from_frame(video_frame)
       # TODO: select face randomly
       face, face_id = (None, None)
+      if cropped_faces:
+            face_id = random.randint(0, len(cropped_faces) - 1)
+            face = cropped_faces[face_id]
+
       # TODO: get audio segment from audio stream
-      audio_segment = None
+      audio_segment =self.get_audio_segment(audio_stream, frame_timestamp)
       # TODO: transform features
       if self.transform:
          video_frame = self.transforms['video_frame'](video_frame)
          face = self.transforms['face'](face)
          audio_segment = self.transforms['audio_segment'](audio_segment)
       # TODO: extract label
-      label = None
+      label = labels[0] if labels else None
       # TODO: Select positive and negative pairs
       anchor = (video_frame, audio_segment, label, face)
-      positive_pair = None
-      negative_pair = None
+      positive_pair =self.get_positive_sample(file_id, frame_timestamp)
+      negative_pair =self.get_negative_sample(file_id)
       return anchor, positive_pair, negative_pair
+   
    def build_batch(self, batch_examples: list):
       # TODO: Add padding
       return NotImplemented
