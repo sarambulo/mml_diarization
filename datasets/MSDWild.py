@@ -44,7 +44,7 @@ import cv2
 import random
 import torch
 import torchaudio
-
+import pandas as pd
 
 class MSDWildBase(Dataset):
    def __init__(self, data_path: str, partition = str):
@@ -78,6 +78,7 @@ class MSDWildBase(Dataset):
       return video_stream, audio_stream, labels, bounding_boxes
 
 
+
 class MSDWildFrames(MSDWildBase):
    def __init__(self, data_path: str, partition: str, transforms):
       """
@@ -95,88 +96,108 @@ class MSDWildFrames(MSDWildBase):
       # TODO: If transforms is provided, check that is a dictionary with
       # keys: 'video_frame', 'face', and 'audio_segment'
       self.transform = transforms
-      self.face_detector=YOLO("yolov8n-face.pt")
 
    def _populate_frame_ids(self):
-        """
-        Populate self.frame_ids with (file_id, frame_timestamp) tuples for all videos.
-        """
-        for file_id in self.file_ids:
-            video_path = self.data_path / 'msdwild_boundingbox_labels' / file_id / f'{file_id}.mp4'
-            if not video_path.exists():
-                continue
-
-            cap = cv2.VideoCapture(str(video_path))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-            for frame_idx in range(frame_count):
-                timestamp = frame_idx / fps  # Convert frame index to timestamp
-                self.frame_ids.append((file_id, timestamp))
-            
-            cap.release()
+        # TODO
+        return NotImplemented
+        
    def __len__(self):
       return len(self.frame_ids)
-   def extract_faces_from_frame(self, frame):
-        results = self.face_detector(frame)
-        cropped_faces = []
-
-        for result in results:
-            for box in result.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])  
-                cropped_face = frame[y1:y2, x1:x2]  # Crop face
-                cropped_faces.append(cropped_face)
-        return cropped_faces
    
+   def parse_bounding_boxes(self, file_id):
+        csv_path = self.data_path / 'msdwild_boundingbox_labels' / f'{file_id}.csv'
+        if csv_path.exists():
+            df = pd.read_csv(csv_path, header=None) 
+            df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
+            return df
+        return None
+   
+   def extract_faces_from_frame(self, frame, bounding_boxes, frame_id):
+      if bounding_boxes is None:
+         return {}
+      frame_boxes =bounding_boxes[bounding_boxes["frame_id"] == frame_id]
+      cropped_faces = {}
+      for _, row in frame_boxes.iterrows():
+         x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
+         cropped_faces[row["face_id"]] = frame[y1:y2, x1:x2]  
+      return cropped_faces
+       
    def get_audio_segment(self, audio_stream, timestamp, segment_duration=1.0):
-        if not audio_stream:
-            return None
+      #   if not audio_stream:
+      #       return None
 
-        waveform, sample_rate = torchaudio.load(audio_stream)  # Load as tensor
-        start_sample = int(timestamp * sample_rate)
-        end_sample = start_sample + int(segment_duration * sample_rate)
+      #   waveform, sample_rate = torchaudio.load(audio_stream)  # Load as tensor
+      #   start_sample = int(timestamp * sample_rate)
+      #   end_sample = start_sample + int(segment_duration * sample_rate)
 
-        return waveform[:, start_sample:end_sample]  # Extract segment
+      #   return waveform[:, start_sample:end_sample]  # Extract segment
 
-   def get_positive_sample(self, file_id, current_timestamp):
-      frame_next=
-   def get_negative_sample(self, file_id):
-      return NotImplemented
+   def get_positive_sample(self, file_id, frame_id, face_id): #TODO
+      bounding_boxes = self.parse_bounding_boxes(file_id)
+      if bounding_boxes is None:
+         return None
+      next_frame = bounding_boxes[(bounding_boxes["frame_id"] > frame_id) & (bounding_boxes["face_id"] == face_id)]
+      if not next_frame.empty:
+         next_frame_id = next_frame.iloc[0]["frame_id"]
+         return self.get_anchor(self.frame_ids.index((file_id, next_frame_id)))
+      return None
+   
+   def get_negative_sample(self, file_id, face_id): #TODO
+      negative_candidates = []
+      for fid in self.file_ids:
+         bounding_boxes = self.parse_bounding_boxes(fid)
+         if bounding_boxes is None:
+            continue
+         different_faces = bounding_boxes[bounding_boxes["face_id"] != face_id]
+         if not different_faces.empty:
+            negative_candidates.append(different_faces)
+
+      if negative_candidates:
+         neg_sample = random.choice(negative_candidates).iloc[0]
+         return self.__getitem__(self.frame_ids.index((neg_sample["frame_id"], neg_sample["face_id"])))
+      return None
+   
+   def get_anchor(self, index):
+         file_id, frame_timestamp = self.frame_ids[index]
+         video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames).__getitem__(file_id)
+         # TODO: get frame from video stream
+         video_frame =next(iter(video_stream.seek(frame_timestamp)))
+         cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, index)
+         face, face_id = (None, None)
+         if cropped_faces:
+               face_id = random.randint(0, len(cropped_faces) - 1)
+               face = cropped_faces[face_id]
+         audio_segment =self.get_audio_segment(audio_stream, frame_timestamp)
+         # TODO: transform features
+         if self.transform:
+            video_frame = self.transforms['video_frame'](video_frame)
+            face = self.transforms['face'](face)
+            audio_segment = self.transforms['audio_segment'](audio_segment)
+         label = labels[0] if labels else None
+         anchor = (video_frame, audio_segment, label, face)
+         return anchor, face_id
+
    def __getitem__(self, index):
       file_id, frame_timestamp = self.frame_ids[index]
-      video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames).__getitem__(file_id)
-      # TODO: get frame from video stream
-      video_frame = None
-      cropped_faces = self.extract_faces_from_frame(video_frame)
-      # TODO: select face randomly
-      face, face_id = (None, None)
-      if cropped_faces:
-            face_id = random.randint(0, len(cropped_faces) - 1)
-            face = cropped_faces[face_id]
-
-      # TODO: get audio segment from audio stream
-      audio_segment =self.get_audio_segment(audio_stream, frame_timestamp)
-      # TODO: transform features
-      if self.transform:
-         video_frame = self.transforms['video_frame'](video_frame)
-         face = self.transforms['face'](face)
-         audio_segment = self.transforms['audio_segment'](audio_segment)
-      # TODO: extract label
-      label = labels[0] if labels else None
-      # TODO: Select positive and negative pairs
-      anchor = (video_frame, audio_segment, label, face)
-      positive_pair =self.get_positive_sample(file_id, face_id, frame_timestamp) 
-      negative_pair =self.get_negative_sample(file_id)
+      anchor, face_id= self.get_anchor(index)
+      positive_pair =self.get_positive_sample(file_id, frame_timestamp, face_id) 
+      negative_pair =self.get_negative_sample(file_id, face_id)
       return anchor, positive_pair, negative_pair
    
    def build_batch(self, batch_examples: list):
-      # TODO: Add padding
-      return NotImplemented
+      batch_examples = [ex for ex in batch_examples if ex is not None]
+
+      if len(batch_examples) == 0:
+         return None
       features = list(zip(*batch_examples))
+      padded_features = []
+
       for feature in features:
-         feature = [torch.tensor(example) for example in feature]
-         feature = torch.stack(feature, axis=0)
-      return tuple([feature for feature in features])
+         feature = [torch.tensor(f) if f is not None else torch.zeros(1) for f in feature]
+         feature = torch.nn.utils.rnn.pad_sequence(feature, batch_first=True)
+         padded_features.append(feature)
+
+      return tuple(padded_features)
 
 # class MSDWildVideos(MSDWildBase):
 #    def __init__(self, data_path: str, partition: str, transforms, max_length = None, max_video_frames = None):
@@ -204,3 +225,6 @@ class MSDWildFrames(MSDWildBase):
 #          feature = [torch.tensor(example) for example in feature]
 #          feature = torch.stack(feature, axis=0)
 #       return tuple([feature for feature in features])
+
+
+
