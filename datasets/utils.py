@@ -23,7 +23,7 @@ def parse_rttm(path) -> np.array:
             data[file_id] = [record[1:]]
         else:
             data[file_id].append(record[1:])
-    data = {file_id: (np.array(data[file_id])[:, :2].astype(float), np.array(data[file_id])[:, 2].astype(int)) for file_id in data}
+    data = {file_id: (np.array(data[file_id])[:, :2].astype(float), np.array(data[file_id])[:, 2].astype(int)) for file_id in data} #tuple ([start time, time spoken], speaker_id)
     return data
 
 
