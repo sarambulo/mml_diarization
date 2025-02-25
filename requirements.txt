@@ -1,3 +1,5 @@
+pyannote.metrics
+pandas
 annotated-types==0.7.0
 asttokens==3.0.0
 av==14.1.0
