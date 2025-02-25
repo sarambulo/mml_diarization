@@ -37,7 +37,7 @@ another active speaker.
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
-from .utils import get_streams, parse_rttm, read_video
+from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
 from ultralytics import YOLO
 import cv2
@@ -62,24 +62,19 @@ class MSDWildBase(Dataset):
       self.rttm_data = rttm_data # items: labels
    def __len__(self):
       return len(self.file_ids)
-   def parse_bounding_boxes(self, file_id):
-        csv_path = self.data_path / 'msdwild_boundingbox_labels' / f'{file_id}.csv'
-        if csv_path.exists():
-            df = pd.read_csv(csv_path, header=None) 
-            df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
-            return df
-        return None
    def __getitem__(self, index):
       file_id = self.file_ids[index]
       root = Path(self.data_path, 'msdwild_boundingbox_labels')
       video_path = root / f'{file_id}.mp4'
       csv_path = root / f'{file_id}.csv'
+      # TODO: parse csv
+      csv = None
       # Get video and audio streams
       video_stream, audio_stream, metadata = get_streams(video_path)
       # TODO: extract labels from rttm file
       labels = self.rttm_data[file_id]
       # TODO: load csv
-      bounding_boxes =self.parse_bounding_boxes(csv_path)
+      bounding_boxes = None
       return video_stream, audio_stream, labels, bounding_boxes
 
 
@@ -123,6 +118,14 @@ class MSDWildFrames(MSDWildBase):
    def __len__(self):
       return len(self.frame_ids)
    
+   def parse_bounding_boxes(self, file_id):
+        csv_path = self.data_path / 'msdwild_boundingbox_labels' / f'{file_id}.csv'
+        if csv_path.exists():
+            df = pd.read_csv(csv_path, header=None) 
+            df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
+            return df
+        return None
+   
    def extract_faces_from_frame(self, frame, bounding_boxes, frame_id):
       if bounding_boxes is None:
          return {}
@@ -133,16 +136,20 @@ class MSDWildFrames(MSDWildBase):
          cropped_faces[row["face_id"]] = frame[y1:y2, x1:x2]  
       return cropped_faces
        
-   def get_audio_segment(self, audio_stream, timestamp, segment_duration=1.0):
-      return NotImplemented
-      #   if not audio_stream:
-      #       return None
-
-      #   waveform, sample_rate = torchaudio.load(audio_stream)  # Load as tensor
-      #   start_sample = int(timestamp * sample_rate)
-      #   end_sample = start_sample + int(segment_duration * sample_rate)
-
-      #   return waveform[:, start_sample:end_sample]  # Extract segment
+   def get_audio_segment(self, audio_stream, frame_id):
+      prev_file_id, prev_timestamp = self.frame_ids[frame_id - 1]
+      current_file_id, current_timestamp = self.frame_ids[frame_id]
+      next_file_id, next_timestamp = self.frame_ids[frame_id + 1]
+      # Case: first frame in video
+      if prev_file_id != current_file_id:
+         prev_timestamp = 0
+      # Case: last frame in video
+      elif current_file_id != next_file_id:
+         next_timestamp = float('inf')
+      start = (prev_timestamp + current_timestamp) / 2
+      end = (current_timestamp + next_timestamp) / 2
+      audio_frames = read_audio(audio_stream, start, end)
+      return audio_frames
 
    def get_positive_sample(self, file_id, frame_id, face_id): #TODO
       bounding_boxes = self.parse_bounding_boxes(file_id)
@@ -151,28 +158,35 @@ class MSDWildFrames(MSDWildBase):
       next_frame = bounding_boxes[(bounding_boxes["frame_id"] > frame_id) & (bounding_boxes["face_id"] == face_id)]
       if not next_frame.empty:
          next_frame_id = next_frame.iloc[0]["frame_id"]
-         anchor,_=self.get_features(self.frame_ids.index((file_id, next_frame_id)))
-         return anchor
+         return self.get_anchor(self.frame_ids.index((file_id, next_frame_id)))
       return None
    
    def get_negative_sample(self, file_id, face_id): #TODO
-      random_frame_id = random.choice(self.frame_ids)
-      while self.frame_ids[random_frame_id][0]==file_id:
-         random_frame_id = random.choice(self.frame_ids)
-      anchor, _ =self.get_features(random_frame_id)
-      return anchor
+      negative_candidates = []
+      for fid in self.file_ids:
+         bounding_boxes = self.parse_bounding_boxes(fid)
+         if bounding_boxes is None:
+            continue
+         different_faces = bounding_boxes[bounding_boxes["face_id"] != face_id]
+         if not different_faces.empty:
+            negative_candidates.append(different_faces)
+
+      if negative_candidates:
+         neg_sample = random.choice(negative_candidates).iloc[0]
+         return self.__getitem__(self.frame_ids.index((neg_sample["frame_id"], neg_sample["face_id"])))
+      return None
    
-   def get_features(self, index):
+   def get_anchor(self, index):
          file_id, frame_timestamp = self.frame_ids[index]
          video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames).__getitem__(file_id)
-         # TODO: get frame from video stream
-         video_frame =next(iter(video_stream.seek(frame_timestamp)))
+         # Get frame from video stream
+         video_frame = next(iter(video_stream.seek(frame_timestamp)))
          cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, index)
          face, face_id = (None, None)
          if cropped_faces:
-               face_id = random.randint(0, len(cropped_faces) - 1)
-               face = cropped_faces[face_id]
-         audio_segment =self.get_audio_segment(audio_stream, frame_timestamp)
+            face_id = random.randint(0, len(cropped_faces) - 1)
+            face = cropped_faces[face_id]
+         audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
          # TODO: transform features
          if self.transform:
             video_frame = self.transforms['video_frame'](video_frame)
@@ -183,10 +197,10 @@ class MSDWildFrames(MSDWildBase):
          return anchor, face_id
 
    def __getitem__(self, index):
-      file_id, frame_timestamp =self.frame_ids[index]
-      anchor, face_id =self.get_anchor(index)
-      positive_pair =self.get_positive_sample(file_id, frame_timestamp, face_id) 
-      negative_pair =self.get_negative_sample(file_id, face_id)
+      file_id, frame_timestamp = self.frame_ids[index]
+      anchor, face_id = self.get_anchor(index)
+      positive_pair = self.get_positive_sample(file_id, frame_timestamp, face_id) 
+      negative_pair = self.get_negative_sample(file_id, face_id)
       return anchor, positive_pair, negative_pair
    
    def build_batch(self, batch_examples: list):
@@ -203,4 +217,33 @@ class MSDWildFrames(MSDWildBase):
          padded_features.append(feature)
 
       return tuple(padded_features)
+
+# class MSDWildVideos(MSDWildBase):
+#    def __init__(self, data_path: str, partition: str, transforms, max_length = None, max_video_frames = None):
+#       """
+#       :param data_path str: path to the directory where the data is stored 
+#       :param partition str: few_train, few_val or many_val
+#       :param max_length float: Each video and audio will be clipped to this duration in seconds
+#       :param max_video_frames int: If `max_video_frames / FPS` is lower than `max_length`, clip videos
+#          and audios to `max_video_frames / FPS` seconds
+#       """
+#       super(MSDWildFrames).__init__(data_path, partition)
+#       # Store configuration for generating segments
+#       self.transform = transform
+#       self.max_video_frames = max_video_frames
+#       self.max_length = max_length # Also frames / fps
+#    def __len__(self):
+#       return len(self.file_ids)
+#    def __getitem__(self, index):
+#       return NotImplemented
+#    def build_batch(self, batch_examples: list):
+#       # TODO: Add padding
+#       return NotImplemented
+#       features = list(zip(*batch_examples))
+#       for feature in features:
+#          feature = [torch.tensor(example) for example in feature]
+#          feature = torch.stack(feature, axis=0)
+#       return tuple([feature for feature in features])
+
+
 
