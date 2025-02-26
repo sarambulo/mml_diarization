@@ -64,6 +64,7 @@ class MSDWildBase(Dataset):
       self.rttm_data = rttm_data # items: labels
    def __len__(self):
       return len(self.file_ids)
+   
    def __getitem__(self, index):
       file_id = self.file_ids[index]
       root = Path(self.data_path, 'msdwild_boundingbox_labels')
@@ -130,6 +131,20 @@ class MSDWildFrames(MSDWildBase):
         
    def __len__(self):
       return len(self.frame_ids)
+   
+   def get_speakers_at_ts(self,data, timestamp):
+      time_intervals, speaker_ids = data  
+      start_times = time_intervals[:,0]
+      durations=time_intervals[:, 1]
+      end_times = start_times+ durations
+      active_speaker_ids = [speaker_ids[i] for i in range(len(start_times)) if start_times[i] <= timestamp < end_times[i]]
+      if not active_speaker_ids:
+        return np.zeros(1, dtype=int)  # Return a single zero if no speakers are active
+      max_speaker_id = max(speaker_ids)  # Get max speaker ID for array size
+      speaker_vector = np.zeros(max_speaker_id + 1, dtype=int)  
+      for speaker_id in active_speaker_ids:
+         speaker_vector[speaker_id] = 1 
+      return speaker_vector
    
    def extract_faces_from_frame(self, frame, bounding_boxes, frame_id):
       if bounding_boxes is None:
