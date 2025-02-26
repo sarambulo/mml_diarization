@@ -70,15 +70,16 @@ class MSDWildBase(Dataset):
       root = Path(self.data_path, 'msdwild_boundingbox_labels')
       video_path = root / f'{file_id}.mp4'
       csv_path = root / f'{file_id}.csv'
-      # Get video and audio streams
+
+      if not video_path.exists():
+         raise FileNotFoundError(f"Video file not found: {video_path}")
       video_stream, audio_stream, metadata = get_streams(video_path)
-      # TODO: extract labels from rttm file
-      labels = self.rttm_data[file_id]
-      # Load bounding boxes from csv
-      bounding_boxes =self.parse_bounding_boxes(csv_path)
+      labels = self.rttm_data.get(file_id, [])
+      bounding_boxes = None
+      if csv_path.exists():
+         bounding_boxes = pd.read_csv(csv_path)
+
       return video_stream, audio_stream, labels, bounding_boxes
-
-
 
 class MSDWildFrames(MSDWildBase):
    def __init__(self, data_path: str, partition: str, transforms):
@@ -116,17 +117,21 @@ class MSDWildFrames(MSDWildBase):
 
    def get_frame_ids(self):
       frame_ids_path = Path(self.data_path, 'frame_ids.csv')
-      if frame_ids_path.exists:
+      if frame_ids_path.exists():
+         print("exists")
          return pd.read_csv(frame_ids_path)
       else:
          # Iterate over file ids
          frame_ids = []
          for file_id in self.file_ids:
-            video_stream = super(MSDWildBase).__getitem__(file_id)[0]
+            file_id=int(file_id)
+            video_stream, _, _, _ = super().__getitem__(file_id)
             # Append file ID and timestamp for each frame
             for frame in video_stream:
                frame_ids.append((file_id, frame['pts']))
          frame_ids = np.array(frame_ids)
+         df = pd.DataFrame(frame_ids, columns=['file_id', 'timestamp'])
+         df.to_csv(frame_ids_path, index=False)
          return frame_ids
         
    def __len__(self):
