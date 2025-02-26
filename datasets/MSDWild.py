@@ -80,13 +80,13 @@ class MSDWildBase(Dataset):
          df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
 
       #   print(f"Bounding Boxes Parsed Successfully for {file_id}:\n", df.head())  # Debugging
-        return df
+         return df
 
       print(f"ERROR: Bounding boxes file {csv_path} not found!")
       return None
    
    def __getitem__(self, index):
-      video_name = self.video_names[index]
+      video_name = self.video_names[int(index)]
       root = Path(self.data_path, 'msdwild_boundingbox_labels')
       video_path = root / f'{video_name}.mp4'
       csv_path = root / f'{video_name}.csv'
@@ -185,6 +185,7 @@ class MSDWildFrames(MSDWildBase):
       return None
 
    def get_audio_segment(self, audio_stream, frame_id):
+      frame_id= int(frame_id)
       prev_file_id, prev_offset, prev_timestamp = self.frame_ids[frame_id - 1]
       current_file_id, current_offset, current_timestamp = self.frame_ids[frame_id]
       next_file_id, next_offset, next_timestamp = self.frame_ids[frame_id + 1]
@@ -239,6 +240,7 @@ class MSDWildFrames(MSDWildBase):
    def __getitem__(self, index):
       video_frame, audio_segment, labels, cropped_faces = self.get_features(index)
       num_faces = len(cropped_faces)
+      print(num_faces)
       anchor_speaker_id, negative_sample_speaker_id = random.shuffle(list(range(num_faces)))[:2]
       anchor = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
       negative_pair = video_frame, audio_segment, cropped_faces[negative_sample_speaker_id]
