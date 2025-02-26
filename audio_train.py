@@ -14,7 +14,8 @@ class AudioOnlyDataset(Dataset):
         :param msd_dataset: Instance of MSDWildFrames.
         """
         self.msd_dataset = msd_dataset
-        self.mel_transform = AT.MelSpectrogram(sample_rate=16000, n_mels=40)
+        self.mel_transform = AT.MelSpectrogram(sample_rate=16000, n_mels=40, pad_mode="reflect")
+
 
     def __len__(self):
         return len(self.msd_dataset)
@@ -26,14 +27,18 @@ class AudioOnlyDataset(Dataset):
         if audio_segment is None:
             return None  # Skip missing audio
 
-        # Convert to Mel-Spectrogram
-        mel_spectrogram = self.mel_transform(audio_segment)
+        if audio_segment.shape[-1] == 2:
+            audio_segment = audio_segment.mean(dim=-1, keepdim=True)
 
-        # Convert label from binary vector to scalar (if needed)
+        audio_segment = audio_segment.squeeze(-1)  # Now shape: [1, 1024]
+
+
+        mel_spectrogram = self.mel_transform(audio_segment)
         label = 1 if label.sum() > 0 else 0  # Active speaker: 1, Silent: 0
 
         return mel_spectrogram, torch.tensor(label, dtype=torch.float32)
-    
+
+        
 
 msd_dataset = MSDWildFrames("/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample", "sample", transforms=None)
 audio_dataset = AudioOnlyDataset(msd_dataset)

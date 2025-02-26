@@ -65,8 +65,29 @@ class MSDWildBase(Dataset):
    def __len__(self):
       return len(self.file_ids)
    
+   def parse_bounding_boxes(self, file_id):
+    file_id = str(file_id).zfill(5)  # Convert file_id to a zero-padded string
+    data_path = Path(self.data_path)  # Convert self.data_path to a Path object if it's a string
+    csv_path = data_path / 'msdwild_boundingbox_labels' / f'{file_id}.csv'  # Ensure correct path
+
+    print(f"DEBUG: Looking for bounding box file at: {csv_path}")  # Debugging
+
+    if csv_path.exists():
+        # Read CSV with no headers (ensure all rows are treated as data)
+        df = pd.read_csv(csv_path, header=None)
+
+        # Manually assign column names
+        df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
+
+        print(f"Bounding Boxes Parsed Successfully for {file_id}:\n", df.head())  # Debugging
+        return df
+
+    print(f"ERROR: Bounding boxes file {csv_path} not found!")
+    return None
+   
    def __getitem__(self, index):
-      file_id = self.file_ids[index]
+  
+      file_id = self.file_ids[int(index)-1]
       root = Path(self.data_path, 'msdwild_boundingbox_labels')
       video_path = root / f'{file_id}.mp4'
       csv_path = root / f'{file_id}.csv'
@@ -77,7 +98,8 @@ class MSDWildBase(Dataset):
       labels = self.rttm_data.get(file_id, [])
       bounding_boxes = None
       if csv_path.exists():
-         bounding_boxes = pd.read_csv(csv_path)
+         bounding_boxes = pd.read_csv(csv_path,header=None, skiprows=0)
+         bounding_boxes.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
 
       return video_stream, audio_stream, labels, bounding_boxes
 
@@ -116,28 +138,32 @@ class MSDWildFrames(MSDWildBase):
          transforms['audio_segment'] = Transforms.Identity()
 
    def get_frame_ids(self):
-      frame_ids_path = Path(self.data_path, 'frame_ids.csv')
-      if frame_ids_path.exists():
-         print("exists")
-         return pd.read_csv(frame_ids_path)
-      else:
-         # Iterate over file ids
-         frame_ids = []
-         for file_id in self.file_ids:
-            file_id=int(file_id)
-            video_stream, _, _, _ = super().__getitem__(file_id)
-            # Append file ID and timestamp for each frame
-            for frame in video_stream:
-               frame_ids.append((file_id, frame['pts']))
-         frame_ids = np.array(frame_ids)
-         df = pd.DataFrame(frame_ids, columns=['file_id', 'timestamp'])
-         df.to_csv(frame_ids_path, index=False)
-         return frame_ids
+    frame_ids_path = Path(self.data_path, 'frame_ids.csv')
+    
+    if frame_ids_path.exists():
+        
+        df = pd.read_csv(frame_ids_path)
+        return df.values.tolist()  # Convert DataFrame to list of lists
+    
+    # If file does not exist, generate frame_ids
+    frame_ids = []
+    for file_id in self.file_ids:
+        file_id = int(file_id)
+        video_stream, _, _, _ = super().__getitem__(file_id)
+        for frame in video_stream:
+            frame_ids.append((file_id, frame['pts']))
+
+    # Convert to NumPy array before saving
+    frame_ids = np.array(frame_ids)
+    df = pd.DataFrame(frame_ids, columns=['file_id', 'timestamp'])
+    df.to_csv(frame_ids_path, index=False)
+
+    return frame_ids.tolist()
         
    def __len__(self):
       return len(self.frame_ids)
    
-   def get_speakers_at_ts(self,data, timestamp):
+   def get_speakers_at_ts(self, data, timestamp):
       time_intervals, speaker_ids = data  
       start_times = time_intervals[:,0]
       durations=time_intervals[:, 1]
@@ -151,17 +177,27 @@ class MSDWildFrames(MSDWildBase):
          speaker_vector[speaker_id] = 1 
       return speaker_vector
    
+   
+
    def extract_faces_from_frame(self, frame, bounding_boxes, frame_id):
       if bounding_boxes is None:
          return {}
+
       frame_boxes = bounding_boxes[bounding_boxes["frame_id"] == frame_id]
       cropped_faces = {}
+
       for _, row in frame_boxes.iterrows():
+         face_id = int(row["face_id"])  
          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
-         cropped_faces[row["face_id"]] = frame[y1:y2, x1:x2]  
-      return cropped_faces
+         # print(cropped_faces)
+         if len(cropped_faces)!=0:
+            cropped_faces[face_id] = frame[y1:y2, x1:x2]  # Crop correctly
+         return cropped_faces
+      return None
+
        
    def get_audio_segment(self, audio_stream, frame_id):
+      frame_id=int(frame_id)
       prev_file_id, prev_timestamp = self.frame_ids[frame_id - 1]
       current_file_id, current_timestamp = self.frame_ids[frame_id]
       next_file_id, next_timestamp = self.frame_ids[frame_id + 1]
@@ -175,8 +211,13 @@ class MSDWildFrames(MSDWildBase):
       end = (current_timestamp + next_timestamp) / 2
       audio_frames = read_audio(audio_stream, start, end)
       return audio_frames
+   
+   
+
+
 
    def get_positive_sample(self, file_id, frame_id, face_id): #TODO
+      file_id=int(file_id)
       bounding_boxes = self.parse_bounding_boxes(file_id)
       if bounding_boxes is None:
          return None
@@ -187,16 +228,20 @@ class MSDWildFrames(MSDWildBase):
          return anchor
       return None
    
-   def get_negative_sample(self, file_id, face_id): #TODO
-      random_frame_id = random.choice(self.frame_ids)
-      while self.frame_ids[random_frame_id][0]==file_id:
-         random_frame_id = random.choice(self.frame_ids)
-      anchor, _ =self.get_features(random_frame_id)
-      return anchor
+   def get_negative_sample(self, file_id, face_id):
+    random_frame = random.choice(self.frame_ids)  
+    random_file_id, random_timestamp = random_frame  
+    while random_file_id == file_id:
+        random_frame = random.choice(self.frame_ids)
+        random_file_id, random_timestamp = random_frame
+
+    anchor, _ = self.get_features(self.frame_ids.index(random_frame))
+    return anchor
+
    
    def get_features(self, index):
          file_id, frame_timestamp = self.frame_ids[index]
-         video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames).__getitem__(file_id)
+         video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(int(file_id))
          # Get frame from video stream
          video_frame = next(iter(video_stream.seek(frame_timestamp)))
          cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, index)
@@ -210,13 +255,14 @@ class MSDWildFrames(MSDWildBase):
             video_frame = self.transforms['video_frame'](video_frame)
             face = self.transforms['face'](face)
             audio_segment = self.transforms['audio_segment'](audio_segment)
-         label = labels[0] if labels else None
-         anchor = (video_frame, audio_segment, label, face)
+         labels = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
+         anchor = (video_frame, audio_segment, labels, face)
          return anchor, face_id
 
    def __getitem__(self, index):
       file_id, frame_timestamp = self.frame_ids[index]
-      anchor, face_id = self.get_anchor(index)
+      # print(self.frame_ids)
+      anchor, face_id = self.get_features(index)
       positive_pair = self.get_positive_sample(file_id, frame_timestamp, face_id) 
       negative_pair = self.get_negative_sample(file_id, face_id)
       return anchor, positive_pair, negative_pair
@@ -243,39 +289,50 @@ class MSDWildVideos(MSDWildFrames):
       :param partition str: few_train, few_val or many_val
       """
       super().__init__(data_path, partition, transforms)
+      self.starting_frame_ids = self.get_starting_frames()
    def get_starting_frames(self):
       starting_frame_ids_path = Path(self.data_path, 'starting_frame_ids.csv')
       if starting_frame_ids_path.exists:
          return pd.read_csv(starting_frame_ids_path)
       else:
          # Iterate over file ids
-         frame_ids = []
+         counter = 0
+         starting_frame_ids = []
          for file_id in self.file_ids:
+            starting_frame_ids.append(counter)
             video_stream = super(MSDWildBase).__getitem__(file_id)[0]
-            # Append file ID and first timestamp for each frame
             for frame in video_stream:
-               frame_ids.append((file_id, frame['pts']))
-               break
-         frame_ids = np.array(frame_ids)
-         return frame_ids
+               counter += 1
+         starting_frame_ids = np.array(starting_frame_ids)
+         np.savetxt(starting_frame_ids_path, starting_frame_ids, delimiter=',')
+         return starting_frame_ids
    def __len__(self):
       return len(self.file_ids)
    def __getitem__(self, index):
       file_id = self.file_ids[index]
-      video_stream, audio_stream, labels, bounding_boxes = super(MSDWildBase).__getitem__(file_id)
+      video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(file_id)
       # Get frames from video stream
-      for video_frame in video_stream:
-         cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, index)
-         frame_timestamp 
+      frame_id = self.starting_frame_ids[index]
+      all_video_frames = []
+      all_audio_segments = []
+      all_labels = []
+      all_faces = []
+      for data in video_stream:
+         video_frame, frame_timestamp = data['data'], data['pts']
+         faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_id)
          audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
          # Transform features
-         if self.transform:
+         if self.transform and faces:
             video_frame = self.transforms['video_frame'](video_frame)
-            face = self.transforms['face'](face)
+            faces = [self.transforms['face'](face) for face in faces]
             audio_segment = self.transforms['audio_segment'](audio_segment)
-         label = labels[0] if labels else None
-         anchor = (video_frame, audio_segment, label, face)
-      return anchor, face_id
+         label = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
+         # Accumulate features for all frames
+         all_video_frames.append(video_frame)
+         all_audio_segments.append(audio_segment)
+         all_labels.append(label)
+         all_faces.append(faces)
+      return all_video_frames, all_audio_segments, all_labels, all_faces
 
 
 

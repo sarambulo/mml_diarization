@@ -114,9 +114,12 @@ def read_video(path: str, start_sec=0, end_sec=None, max_frames=None, return_vid
         stream.get_metadata(),
     )
 
-def get_streams(path):
-    path = str(path)
-    video_stream = VideoReader(path, 'video')
-    audio_stream = VideoReader(path, 'audio') 
+
+def get_streams(video_path):
+    video_path = Path(video_path)  # Ensure it's a Path object
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+    video_stream = VideoReader(str(video_path), 'video')  
+    audio_stream = VideoReader(str(video_path), 'audio')
     metadata = video_stream.get_metadata()
     return video_stream, audio_stream, metadata
