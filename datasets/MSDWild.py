@@ -132,7 +132,7 @@ class MSDWildFrames(MSDWildBase):
    def __len__(self):
       return len(self.frame_ids)
    
-   def get_speakers_at_ts(self,data, timestamp):
+   def get_speakers_at_ts(self, data, timestamp):
       time_intervals, speaker_ids = data  
       start_times = time_intervals[:,0]
       durations=time_intervals[:, 1]
@@ -205,8 +205,8 @@ class MSDWildFrames(MSDWildBase):
             video_frame = self.transforms['video_frame'](video_frame)
             face = self.transforms['face'](face)
             audio_segment = self.transforms['audio_segment'](audio_segment)
-         label = labels[0] if labels else None
-         anchor = (video_frame, audio_segment, label, face)
+         labels = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
+         anchor = (video_frame, audio_segment, labels, face)
          return anchor, face_id
 
    def __getitem__(self, index):
@@ -238,39 +238,50 @@ class MSDWildVideos(MSDWildFrames):
       :param partition str: few_train, few_val or many_val
       """
       super().__init__(data_path, partition, transforms)
+      self.starting_frame_ids = self.get_starting_frames()
    def get_starting_frames(self):
       starting_frame_ids_path = Path(self.data_path, 'starting_frame_ids.csv')
       if starting_frame_ids_path.exists:
          return pd.read_csv(starting_frame_ids_path)
       else:
          # Iterate over file ids
-         frame_ids = []
+         counter = 0
+         starting_frame_ids = []
          for file_id in self.file_ids:
+            starting_frame_ids.append(counter)
             video_stream = super(MSDWildBase).__getitem__(file_id)[0]
-            # Append file ID and first timestamp for each frame
             for frame in video_stream:
-               frame_ids.append((file_id, frame['pts']))
-               break
-         frame_ids = np.array(frame_ids)
-         return frame_ids
+               counter += 1
+         starting_frame_ids = np.array(starting_frame_ids)
+         np.savetxt(starting_frame_ids_path, starting_frame_ids, delimiter=',')
+         return starting_frame_ids
    def __len__(self):
       return len(self.file_ids)
    def __getitem__(self, index):
       file_id = self.file_ids[index]
       video_stream, audio_stream, labels, bounding_boxes = super(MSDWildBase).__getitem__(file_id)
       # Get frames from video stream
-      for video_frame in video_stream:
-         cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, index)
-         frame_timestamp 
+      frame_id = self.starting_frame_ids[index]
+      all_video_frames = []
+      all_audio_segments = []
+      all_labels = []
+      all_faces = []
+      for data in video_stream:
+         video_frame, frame_timestamp = data['data'], data['pts']
+         faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_id)
          audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
          # Transform features
          if self.transform:
             video_frame = self.transforms['video_frame'](video_frame)
-            face = self.transforms['face'](face)
+            faces = [self.transforms['face'](face) for face in faces]
             audio_segment = self.transforms['audio_segment'](audio_segment)
-         label = labels[0] if labels else None
-         anchor = (video_frame, audio_segment, label, face)
-      return anchor, face_id
+         label = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
+         # Accumulate features for all frames
+         all_video_frames.append(video_frame)
+         all_audio_segments.append(audio_segment)
+         all_labels.append(label)
+         all_faces.append(faces)
+      return all_video_frames, all_audio_segments, all_labels, all_faces
 
 
 
