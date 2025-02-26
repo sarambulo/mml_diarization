@@ -79,7 +79,7 @@ class MSDWildBase(Dataset):
         # Manually assign column names
         df.columns = ["frame_id", "face", "face_id", "x1", "y1", "x2", "y2", "fixed"]
 
-        print(f"Bounding Boxes Parsed Successfully for {file_id}:\n", df.head())  # Debugging
+      #   print(f"Bounding Boxes Parsed Successfully for {file_id}:\n", df.head())  # Debugging
         return df
 
     print(f"ERROR: Bounding boxes file {csv_path} not found!")
