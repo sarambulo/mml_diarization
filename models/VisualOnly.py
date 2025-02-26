@@ -90,17 +90,33 @@ class VisualOnlyModel(torch.nn.Module):
    def __init__(self):
       super(VisualOnlyModel).__init__()
       self.visual_encoder = ResNet34()
+      # TODO: implement classifier
+      self.classifier = None
 
    def forward(self, X):
-      embeddings = self.visual_encoder(X)
-      return embeddings
+      embedding = self.visual_encoder(X)
+      active_speaker = self.classifier(embedding)
+      return embedding, active_speaker
 
-   def predict(self, X):
+   @torch.no_grad()
+   def predict_frame(self, X):
       # Set eval mode
       self.eval()
-      # Call forward with no gradients
-      with torch.no_grad():
-         embeddings = self.forward(X)
-      # Perform agglomerative clustering
-      # TODO
-      pass
+      # Call forward with no gradients and in inference mode
+      with torch.inference_mode():
+         embedding, active_speaker = self.forward(X)
+      return embedding, active_speaker
+
+   @torch.no_grad()
+   def predict_video(self, X):
+      # Set eval mode
+      self.eval()
+      num_frames = X.shape[0]
+      embeddings = []
+      for t in range(num_frames):
+         frame = X[t]
+         embedding, active_speaker = self.predict_frame(frame)
+         embeddings.append(embedding)
+         # Perform agglomerative clustering
+         # TODO
+         pass

@@ -43,6 +43,10 @@ import random
 import torch
 import torchaudio
 import pandas as pd
+import torchvision.transforms.v2 as Transforms
+
+IMG_WIDTH = 112
+IMG_HEIGHT = 112
 
 class MSDWildBase(Dataset):
    def __init__(self, data_path: str, partition = str):
@@ -50,7 +54,7 @@ class MSDWildBase(Dataset):
       :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
       """
-      super(MSDWildBase).__init__()
+      super().__init__()
       self.data_path = data_path
       # Parse the rttm file to extract the file ids and labels
       rttm_filename = f"{partition}.rttm"
@@ -81,7 +85,7 @@ class MSDWildFrames(MSDWildBase):
       :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
       """
-      super(MSDWildFrames).__init__(data_path, partition)
+      super().__init__(data_path, partition)
       # Adding IDs to frames
       # Frame IDs are the position of each frame in this list
       # Each element of the list contains the file ID and the frame timestamp (for seek)
@@ -95,6 +99,19 @@ class MSDWildFrames(MSDWildBase):
          assert 'face' in transforms
          assert 'audio_segment' in transforms
          self.transform = transforms
+      else:
+         transforms = {}
+         image_transform = Transforms.Compose([
+            Transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+            Transforms.ToDtype(torch.float32, scale=True),
+            Transforms.RandomHorizontalFlip(p = 0.5),
+            Transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9,1.1)),
+            Transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            Transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+         ])
+         transforms['video_frame'] = image_transform
+         transforms['face'] = image_transform
+         transforms['audio_segment'] = Transforms.Identity()
 
    def get_frame_ids(self):
       frame_ids_path = Path(self.data_path, 'frame_ids.csv')
@@ -168,7 +185,7 @@ class MSDWildFrames(MSDWildBase):
             face_id = random.randint(0, len(cropped_faces) - 1)
             face = cropped_faces[face_id]
          audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
-         # TODO: transform features
+         # Transform features
          if self.transform:
             video_frame = self.transforms['video_frame'](video_frame)
             face = self.transforms['face'](face)
@@ -199,32 +216,47 @@ class MSDWildFrames(MSDWildBase):
 
       return tuple(padded_features)
 
-# class MSDWildVideos(MSDWildBase):
-#    def __init__(self, data_path: str, partition: str, transforms, max_length = None, max_video_frames = None):
-#       """
-#       :param data_path str: path to the directory where the data is stored 
-#       :param partition str: few_train, few_val or many_val
-#       :param max_length float: Each video and audio will be clipped to this duration in seconds
-#       :param max_video_frames int: If `max_video_frames / FPS` is lower than `max_length`, clip videos
-#          and audios to `max_video_frames / FPS` seconds
-#       """
-#       super(MSDWildFrames).__init__(data_path, partition)
-#       # Store configuration for generating segments
-#       self.transform = transform
-#       self.max_video_frames = max_video_frames
-#       self.max_length = max_length # Also frames / fps
-#    def __len__(self):
-#       return len(self.file_ids)
-#    def __getitem__(self, index):
-#       return NotImplemented
-#    def build_batch(self, batch_examples: list):
-#       # TODO: Add padding
-#       return NotImplemented
-#       features = list(zip(*batch_examples))
-#       for feature in features:
-#          feature = [torch.tensor(example) for example in feature]
-#          feature = torch.stack(feature, axis=0)
-#       return tuple([feature for feature in features])
+class MSDWildVideos(MSDWildFrames):
+   def __init__(self, data_path: str, partition: str, transforms):
+      """
+      :param data_path str: path to the directory where the data is stored 
+      :param partition str: few_train, few_val or many_val
+      """
+      super().__init__(data_path, partition, transforms)
+   def get_starting_frames(self):
+      starting_frame_ids_path = Path(self.data_path, 'starting_frame_ids.csv')
+      if starting_frame_ids_path.exists:
+         return pd.read_csv(starting_frame_ids_path)
+      else:
+         # Iterate over file ids
+         frame_ids = []
+         for file_id in self.file_ids:
+            video_stream = super(MSDWildBase).__getitem__(file_id)[0]
+            # Append file ID and first timestamp for each frame
+            for frame in video_stream:
+               frame_ids.append((file_id, frame['pts']))
+               break
+         frame_ids = np.array(frame_ids)
+         return frame_ids
+   def __len__(self):
+      return len(self.file_ids)
+   def __getitem__(self, index):
+      file_id = self.file_ids[index]
+      video_stream, audio_stream, labels, bounding_boxes = super(MSDWildBase).__getitem__(file_id)
+      # Get frames from video stream
+      for video_frame in video_stream:
+         cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, index)
+         frame_timestamp 
+         audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
+         # Transform features
+         if self.transform:
+            video_frame = self.transforms['video_frame'](video_frame)
+            face = self.transforms['face'](face)
+            audio_segment = self.transforms['audio_segment'](audio_segment)
+         label = labels[0] if labels else None
+         anchor = (video_frame, audio_segment, label, face)
+      return anchor, face_id
+
 
 
 
