@@ -61,10 +61,20 @@ class MSDWildBase(Dataset):
       rttm_path = Path(data_path, rttm_filename)
       rttm_data = parse_rttm(rttm_path)
       self.video_names = list(rttm_data.keys())
+      self.video_durations, self.video_fps = self.get_video_metadata(self.video_names)
+      self.video_num_frames = np.floor(self.video_durations * self.video_fps).astype(int)
       self.rttm_data = rttm_data # keys: video_names, items: labels
    def __len__(self):
       return len(self.video_names)
-   
+   def get_video_metadata(self, video_names):
+      root = Path(self.data_path, 'msdwild_boundingbox_labels')
+      all_metadata = []
+      for video_name in video_names:
+         video_path = root / f'{video_name}.mp4'
+         metadata = get_streams(video_path)[2]
+         all_metadata.append((metadata['video']['duration'], metadata['video']['fps']))
+      duration, fps = list(zip(*all_metadata))
+      return np.array(duration), np.array(fps)
    def parse_bounding_boxes(self, index):
       video_name = self.video_names[index]  # Convert file_id to a zero-padded string
       data_path = Path(self.data_path)  # Convert self.data_path to a Path object if it's a string
@@ -111,7 +121,7 @@ class MSDWildFrames(MSDWildBase):
       # Adding IDs to frames
       # Frame IDs are the position of each frame in this list
       # Each element of the list contains the file ID and the frame timestamp (for seek)
-      self.frame_ids = self.get_frame_ids()
+      self.video_last_frame_id = np.cumsum(self.video_num_frames)
       # If transforms is provided, check that is a dictionary with
       # keys: 'video_frame', 'face', and 'audio_segment'
       self.transforms = None
@@ -135,28 +145,48 @@ class MSDWildFrames(MSDWildBase):
          transforms['face'] = image_transform
          transforms['audio_segment'] = Transforms.Identity()
          self.transforms = transforms
-
-   def get_frame_ids(self):
-      frame_ids_path = Path(self.data_path, 'frame_ids.csv')
-      if frame_ids_path.exists():
-         df = pd.read_csv(frame_ids_path, dtype={'file_id': int, 'frame_offset': int, 'timestamp': float})
-         return df.values  # Convert DataFrame to list of lists
-      
-      # If file does not exist, generate frame_ids
-      frame_ids = []
-      for video_index in range(len(self.video_names)):
-         video_stream, _, _, _ = super().__getitem__(video_index)
-         for offset, frame in enumerate(video_stream):
-               frame_ids.append((video_index, offset, frame['pts']))
-
-      # Convert to NumPy array before saving
-      frame_ids = pd.DataFrame(frame_ids, columns=['file_id', 'frame_offset', 'timestamp'])
-      frame_ids[['file_id', 'frame_offset']] = frame_ids[['file_id', 'frame_offset']].astype(int)
-      frame_ids.to_csv(frame_ids_path, index=False)
-      return frame_ids.values
         
    def __len__(self):
-      return len(self.frame_ids)
+      return self.video_last_frame_id[-1]
+   
+   def get_video_index(self, frame_id, start = 0, end = None):
+      """
+      Binary search over the last frame id for each video
+      Example
+      self.video_last_frame_id = [5, 10, 15]
+      video_indexes = [0, 1, 2]
+      frame_id = 12
+      video_index = 2
+      """
+      if end is None:
+         end = len(self.video_last_frame_id)
+      if start > end:
+         raise ValueError('Frame id not found')
+      mid_index = (start + end) // 2
+      last_frame_id = self.video_last_frame_id[mid_index]
+      # Edge case: Mid video could be the first video
+      first_frame_id = 0
+      if mid_index > 0:
+         first_frame_id = self.video_last_frame_id[mid_index - 1] + 1
+      # Found: Frame is between the first and last frame for the mid video
+      if first_frame_id <= frame_id <= last_frame_id:
+         return mid_index
+      # Search right
+      elif frame_id > last_frame_id:
+         return self.get_video_index(frame_id, mid_index + 1, end)
+      # Search left
+      else:
+         return self.get_video_index(frame_id, start, mid_index - 1)
+   
+   def get_frame_loc(self, frame_id):
+      video_index = self.get_video_index(frame_id)
+      # Edge case: First video
+      first_frame_id = 0
+      if video_index > 0:
+         first_frame_id = self.video_last_frame_id[video_index - 1] + 1
+      frame_offset = frame_id - first_frame_id
+      frame_timestamp = frame_offset / self.video_fps[video_index].item()
+      return video_index, frame_offset, frame_timestamp
    
    def get_speakers_at_ts(self, data, timestamp) -> np.ndarray:
       time_intervals, speaker_ids = data  
@@ -196,22 +226,30 @@ class MSDWildFrames(MSDWildBase):
 
    def get_audio_segment(self, audio_stream, frame_id):
       frame_id = int(frame_id)
-      prev_file_id, prev_offset, prev_timestamp = self.frame_ids[frame_id - 1]
-      current_file_id, current_offset, current_timestamp = self.frame_ids[frame_id]
-      next_file_id, next_offset, next_timestamp = self.frame_ids[frame_id + 1]
-      # Case: first frame in video
-      if prev_file_id != current_file_id:
-         prev_timestamp = 0
-      # Case: last frame in video
-      elif current_file_id != next_file_id:
-         next_timestamp = float('inf')
-      start = (prev_timestamp + current_timestamp) / 2
-      end = (current_timestamp + next_timestamp) / 2
+      current_file_id, current_offset, current_timestamp = self.get_frame_loc(frame_id)
+      # Edge case: first frame
+      if frame_id == 0:
+         start = 0
+      else: 
+         prev_file_id, prev_offset, prev_timestamp = self.get_frame_loc(frame_id - 1)
+         # Case: first frame in video
+         if prev_file_id != current_file_id:
+            prev_timestamp = 0
+         start = (prev_timestamp + current_timestamp) / 2
+      # Edge case: last frame
+      if frame_id >= len(self):
+         end = float('inf')
+      else:
+         next_file_id, next_offset, next_timestamp = self.get_frame_loc(frame_id + 1)
+         # Case: last frame in video
+         if current_file_id != next_file_id:
+            next_timestamp = float('inf')
+         end = (current_timestamp + next_timestamp) / 2
       audio_frames = read_audio(audio_stream, start, end)
       return audio_frames
    
    def get_features(self, frame_id):
-      file_id, frame_offset, frame_timestamp = self.frame_ids[frame_id]
+      file_id, frame_offset, frame_timestamp = self.get_frame_loc(frame_id)
       video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(file_id)
       # Get frame from video stream
       result = next(iter(video_stream.seek(frame_timestamp)))
@@ -230,7 +268,7 @@ class MSDWildFrames(MSDWildBase):
 
    def get_positive_sample(self, frame_id, anchor_speaker_id):
       # Case: Last frame
-      next_frame_offset = self.frame_ids[frame_id + 1][1]
+      next_frame_offset = self.get_frame_loc(frame_id + 1)[1]
       if next_frame_offset == 0:
          # Use the previous frame
          video_frame, audio_segment, labels, cropped_faces = self.get_features(frame_id - 1)

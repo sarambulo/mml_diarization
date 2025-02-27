@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
-from utils.metrics import calculate_metrics_for_dataset
-from data import rttm_to_annotations
+# from utils.metrics import calculate_metrics_for_dataset
+# from data import rttm_to_annotations
 
 class AudioOnlyTDNN(nn.Module):
     def __init__(self, input_dim=40, hidden_dim=512):
@@ -153,12 +153,12 @@ def train_model(model, train_loader, criterion, optimizer, device, num_epochs=10
 
 def main():
     # Initialize dataset with None transforms to skip face transformations
-    data_path = "/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample"
+    data_path = "data"
     msd_dataset = MSDWildFrames(data_path, "few_train", transforms=None)
     audio_dataset = AudioOnlyDataset(msd_dataset)
     
     # Create data loader with reduced number of workers to avoid potential issues
-    batch_size = 32
+    batch_size = 256
     train_loader = DataLoader(
         audio_dataset,
         batch_size=batch_size,
