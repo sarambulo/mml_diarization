@@ -165,7 +165,8 @@ class MSDWildFrames(MSDWildBase):
       end_times = start_times+ durations
       active_speaker_ids = [speaker_ids[i] for i in range(len(start_times)) if start_times[i] <= timestamp < end_times[i]]
       if not active_speaker_ids:
-        return np.zeros(1, dtype=int)  # Return a single zero if no speakers are active
+        max_speaker_id = max(speaker_ids, default=0)  # Avoid error if speaker_ids is empty
+        return np.zeros(max_speaker_id + 1, dtype=int)  
       max_speaker_id = max(speaker_ids)  # Get max speaker ID for array size
       speaker_vector = np.zeros(max_speaker_id + 1, dtype=int)  
       for speaker_id in active_speaker_ids:
@@ -175,14 +176,23 @@ class MSDWildFrames(MSDWildBase):
    def extract_faces_from_frame(self, frame, bounding_boxes, frame_offset):
       if bounding_boxes is None:
          return {}
+
       frame_boxes = bounding_boxes[bounding_boxes["frame_id"] == frame_offset]
       cropped_faces = {}
+
       for _, row in frame_boxes.iterrows():
-         face_id = int(row["face_id"])  
+         face_id = int(row["face_id"])
          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
-         cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  # Crop correctly
+         if x2 > x1 and y2 > y1:
+               cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  
+         
       cropped_faces = [cropped_faces[face_id] for face_id in sorted(cropped_faces)]
+      cropped_faces = [
+         self.transforms['face'](face) if face.numel() > 0 else torch.zeros(1)
+         for face in cropped_faces
+      ]
       return cropped_faces
+
 
    def get_audio_segment(self, audio_stream, frame_id):
       frame_id = int(frame_id)
@@ -214,6 +224,7 @@ class MSDWildFrames(MSDWildBase):
          cropped_faces = [self.transforms['face'](face) for face in cropped_faces]
          audio_segment = self.transforms['audio_segment'](audio_segment)
       labels = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
+      # print(labels)
       features = (video_frame, audio_segment, labels, cropped_faces)
       return features
 
@@ -246,6 +257,10 @@ class MSDWildFrames(MSDWildBase):
       anchor = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
       negative_pair = video_frame, audio_segment, cropped_faces[negative_sample_speaker_id]
       positive_pair = self.get_positive_sample(index, anchor_speaker_id) 
+      # print(labels)
+      # print(anchor_speaker_id)
+      if anchor_speaker_id >= len(labels):  
+         anchor_speaker_id = 0
       label = labels[anchor_speaker_id]
       return anchor, positive_pair, negative_pair, label
    

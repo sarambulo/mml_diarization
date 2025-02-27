@@ -19,7 +19,7 @@ class AudioOnlyDataset(Dataset):
             sample_rate=16000,
             n_mels=40,
             n_fft=400,
-            hop_length=160,
+            hop_length=80,
             win_length=400,
             pad_mode="reflect"
         )
@@ -28,22 +28,28 @@ class AudioOnlyDataset(Dataset):
         return len(self.msd_dataset)
 
     def __getitem__(self, index):
-        anchor, _, _ = self.msd_dataset[index]  # Ignore positive/negative pairs
-        _, audio_segment, label, _ = anchor  # Extract audio & label
+        anchor, _,_,label = self.msd_dataset[index]  # Ignore positive/negative pairs
+        vid_frame, audio_segment, face = anchor  # Extract audio
 
         if audio_segment is None:
             return None  # Skip missing audio
 
-        # ✅ Convert stereo to mono if needed
         if audio_segment.shape[-1] == 2:
             audio_segment = audio_segment.mean(dim=-1, keepdim=True)
+        
+        # Ensure audio_segment is 2D: [1, samples]
+        if audio_segment.dim() == 1:
+            audio_segment = audio_segment.unsqueeze(0)
+        audio_segment = audio_segment.squeeze(-1)  # Remove any extra dimensions
 
-        audio_segment = audio_segment.squeeze(-1)  # Shape: [1, 1024]
-
-        # ✅ Compute Mel-Spectrogram
-        mel_spectrogram = self.mel_transform(audio_segment).squeeze(0)  # Shape: [40, T]
-
-        # ✅ Convert label to binary
+        mel_spectrogram = self.mel_transform(audio_segment)  # Shape: [1, freq, time]
+        
+        # Ensure consistent channel dimension of 1
+        if mel_spectrogram.dim() == 2:
+            mel_spectrogram = mel_spectrogram.unsqueeze(0)
+        elif mel_spectrogram.shape[0] > 1:
+            mel_spectrogram = mel_spectrogram.mean(dim=0, keepdim=True)
+        
         label = torch.tensor(1 if label.sum() > 0 else 0, dtype=torch.float32)
 
         return mel_spectrogram, label
@@ -54,23 +60,21 @@ def collate_fn(batch):
         return None
 
     inputs, labels = zip(*batch)
+    
+    # Stack instead of pad_sequence since mel spectrograms should have same size
+    inputs = torch.stack(inputs)  # Shape: [batch, channels, freq, time]
+    
+    # Reshape to [batch, channels * freq, time]
+    batch_size, channels, freq, time = inputs.shape
+    inputs = inputs.view(batch_size, channels * freq, time)
 
-    # ✅ Convert list of tensors into a padded tensor along time axis
-    inputs = pad_sequence(inputs, batch_first=True, padding_value=0)  # Shape: [batch, max_T, 40]
-
-    # ✅ Ensure the input has 3D shape: [batch, channels, time]
-    if inputs.dim() == 3:  # [batch, time, 40]
-        inputs = inputs.permute(0, 2, 1)  # Convert to [batch, 40, time]
-
-    labels = torch.tensor(labels, dtype=torch.float32).unsqueeze(1)  # Shape: [batch, 1]
+    labels = torch.stack(labels).unsqueeze(1)  # Shape: [batch, 1]
 
     return inputs, labels
 
-# ✅ Initialize dataset and DataLoader
 msd_dataset = MSDWildFrames("/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample", "sample", transforms=None)
 audio_dataset = AudioOnlyDataset(msd_dataset)
 
-# ✅ Check a sample
 sample_idx = 0
 mel_spec, label = audio_dataset[sample_idx]
 
@@ -79,13 +83,12 @@ print(f"Sample {sample_idx} - Label: {label}")
 
 train_loader = DataLoader(audio_dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
 
-# ✅ Initialize model, loss, and optimizer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = TDNN().to(device)
 criterion = nn.BCELoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# ✅ Training loop
+
 def train(model, train_loader, criterion, optimizer, num_epochs=5):
     model.train()
     for epoch in range(num_epochs):
@@ -108,5 +111,4 @@ def train(model, train_loader, criterion, optimizer, num_epochs=5):
 
         print(f"Epoch {epoch+1}, Loss: {running_loss / len(train_loader)}")
 
-# ✅ Run training
 train(model, train_loader, criterion, optimizer, num_epochs=10)

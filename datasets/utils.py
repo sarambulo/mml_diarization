@@ -30,6 +30,7 @@ def read_audio(audio_stream, start_sec=0, end_sec=None):
     # Check inputs
     if audio_stream is None:
         raise ValueError('No audio_stream provided')
+   
     if end_sec is None:
         end_sec = float("inf")
     if end_sec < start_sec:
