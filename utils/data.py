@@ -1,8 +1,14 @@
 from pyannote.core import Annotation, Segment
+import os
 
 
 def rttm_to_annotations(path):
-    d = load_rttm_by_video(path)
+    d = {}
+    if os.path.isfile(path):
+        d = load_rttm_by_video(path)
+    elif os.path.isdir(path):
+        d = load_rttm_by_video_from_folder(path)
+    print(f"{len(d)} videos found at {path}")
     annotations = {}
     for videoId in d:
         ann = Annotation()
@@ -12,9 +18,15 @@ def rttm_to_annotations(path):
     return annotations
 
 
+def load_rttm_by_video_from_folder(path):
+    data = {}
+    for videoName in os.listdir(path):
+        videoPath = os.path.join(path, videoName)
+        data.update(load_rttm_by_video(videoPath))
+    return data
+
 def load_rttm_by_video(path):
     data = {}
-    print(path)
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             fields = line.strip().split()
