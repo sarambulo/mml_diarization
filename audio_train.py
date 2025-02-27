@@ -254,17 +254,16 @@ def train_model(model, train_loader, criterion, optimizer, device, num_epochs=20
 def main():
     # Initialize dataset with None transforms to skip face transformations
     data_path = "data"
-    msd_dataset = MSDWildFrames(data_path, "few_train", transforms=None)
+    msd_dataset = MSDWildFrames(data_path, "few_train", transforms=None, subset = 0.01)
     audio_dataset = AudioOnlyDataset(msd_dataset)
     
     # Create data loader with reduced number of workers to avoid potential issues
-    batch_size = 256
+    batch_size = 512
     train_loader = DataLoader(
-        train_audio_dataset,
+        audio_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=4
+        collate_fn=collate_fn
     )
     
     # Initialize model and training components

@@ -49,10 +49,11 @@ IMG_WIDTH = 112
 IMG_HEIGHT = 112
 
 class MSDWildBase(Dataset):
-   def __init__(self, data_path: str, partition = str):
+   def __init__(self, data_path: str, partition: str, subset: float = 1):
       """
       :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
+      :param subset float: portion of the data to use, from 0 to 1
       """
       super().__init__()
       self.data_path = data_path
@@ -61,6 +62,9 @@ class MSDWildBase(Dataset):
       rttm_path = Path(data_path, rttm_filename)
       rttm_data = parse_rttm(rttm_path)
       self.video_names = list(rttm_data.keys())
+      random.shuffle(self.video_names)
+      N = len(self.video_names)
+      self.video_names = self.video_names[:int(N * subset)]
       self.video_durations, self.video_fps = self.get_video_metadata(self.video_names)
       self.video_num_frames = np.floor(self.video_durations * self.video_fps).astype(int)
       self.rttm_data = rttm_data # keys: video_names, items: labels
