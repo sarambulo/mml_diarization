@@ -13,3 +13,13 @@ class TestCNNBlock():
       block = CNNBlock(3, 2, 3, 2, 1)
       Z = block(MOCK_INPUT)
       assert (5, 2, 3, 3) == Z.shape
+
+class TestResnetBlock():
+   def test_forward(self):
+      block = ResNetBlock(3, 2, 3, 1)
+      Z = block(MOCK_INPUT)
+      assert (5, 2, 6, 6) == Z.shape
+   def test_stride(self):
+      block = ResNetBlock(3, 2, 3, 2)
+      Z = block(MOCK_INPUT)
+      assert (5, 2, 3, 3) == Z.shape
