@@ -349,38 +349,26 @@ class MSDWildVideos(MSDWildFrames):
       :param partition str: few_train, few_val or many_val
       """
       super().__init__(data_path, partition, transforms)
-      self.starting_frame_ids = self.get_starting_frames()
-   def get_starting_frames(self):
-      starting_frame_ids_path = Path(self.data_path, 'starting_frame_ids.csv')
-      if starting_frame_ids_path.exists:
-         return pd.read_csv(starting_frame_ids_path)
-      else:
-         # Iterate over file ids
-         counter = 0
-         starting_frame_ids = []
-         for file_id in self.video_names:
-            starting_frame_ids.append(counter)
-            video_stream = super(MSDWildBase).__getitem__(file_id)[0]
-            for frame in video_stream:
-               counter += 1
-         starting_frame_ids = np.array(starting_frame_ids)
-         np.savetxt(starting_frame_ids_path, starting_frame_ids, delimiter=',')
-         return starting_frame_ids
    def __len__(self):
       return len(self.video_names)
    def __getitem__(self, index):
       file_id = self.video_names[index]
-      video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(file_id)
+      video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames, self).__getitem__(file_id)
       # Get frames from video stream
-      frame_id = self.starting_frame_ids[index]
       all_video_frames = []
       all_audio_segments = []
       all_labels = []
       all_faces = []
+      all_timestamps = []
+      frame_offset = 0
+      if file_id == 0:
+         frame_id = 0
+      else:
+         frame_id = self.video_last_frame_id[file_id - 1] + 1
       for data in video_stream:
          video_frame, frame_timestamp = data['data'], data['pts']
-         faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_id)
-         audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
+         faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_offset)
+         audio_segment = self.get_audio_segment(audio_stream, frame_id)
          # Transform features
          if self.transforms and faces:
             video_frame = self.transforms['video_frame'](video_frame)
@@ -392,7 +380,10 @@ class MSDWildVideos(MSDWildFrames):
          all_audio_segments.append(audio_segment)
          all_labels.append(label)
          all_faces.append(faces)
-      return all_video_frames, all_audio_segments, all_labels, all_faces
+         all_timestamps.append(frame_timestamp)
+         frame_id += 1
+         frame_offset += 1
+      return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps
 
 
 

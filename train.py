@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 import argparse
 from audio_train import create_rttm_file, evaluate_model
-from datasets.MSDWild import MSDWildFrames
+from datasets.MSDWild import MSDWildFrames, MSDWildVideos
 from models.VisualOnly import VisualOnlyModel
 from pathlib import Path
 from losses.DiarizationLoss import DiarizationLoss
@@ -95,7 +95,7 @@ def main(model_name, epochs, batch_size, learning_rate, subset):
     )
     # Load data
     train_dataset = MSDWildFrames('data', 'few_train', None, subset)
-    val_dataset = MSDWildFrames('data', 'many_val', None, subset)
+    val_dataset = MSDWildVideos('data', 'many_val', None, subset)
     train_dataloader = DataLoader(train_dataset, batch_size, True, collate_fn=train_dataset.build_batch)
     val_dataloader = DataLoader(val_dataset, batch_size, False, collate_fn=val_dataset.build_batch)
     # Training process
@@ -115,7 +115,7 @@ def main(model_name, epochs, batch_size, learning_rate, subset):
             'train_loss': train_loss,
         })
         # validation
-        valid_acc, valid_loss = evaluate_model(model, val_dataloader)
+        valid_acc, valid_loss = 0, 0 # TODO: evaluate_model(model, val_dataloader)
         print("Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(valid_acc, valid_loss))
         metrics.update({
             'valid_cls_acc': valid_acc,
@@ -133,6 +133,12 @@ def main(model_name, epochs, batch_size, learning_rate, subset):
         # You may want to call some schedulers inside the train function. What are these?
         if scheduler is not None:
             scheduler.step(valid_loss)
+
+    # save last model
+    model_path = Path(CHECKPOINT_PATH, f'last_{model_name}.pth')
+    save_model(model, metrics, epoch, model_path)
+    print("Saved best model")
+
     return
 
 if __name__ == '__main__':
