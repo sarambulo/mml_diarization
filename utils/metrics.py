@@ -1,4 +1,4 @@
-from data import rttm_to_annotations
+from .data import rttm_to_annotations
 from pyannote.metrics.diarization import (
     GreedyDiarizationErrorRate,
     JaccardErrorRate,

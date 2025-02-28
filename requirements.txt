@@ -2,7 +2,7 @@ pyannote.metrics
 pandas
 annotated-types==0.7.0
 asttokens==3.0.0
-av==14.1.0
+av==11.0.0
 bleach==6.2.0
 Brotli @ file:///croot/brotli-split_1736182456865/work
 certifi @ file:///croot/certifi_1734473278428/work/certifi
@@ -95,3 +95,5 @@ wcwidth==0.2.13
 webencodings==0.5.1
 wheel==0.44.0
 widgetsnbextension==4.0.13
+ultralytics
+opencv-python
