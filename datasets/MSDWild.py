@@ -384,7 +384,7 @@ class MSDWildVideos(MSDWildFrames):
          # Transform features
          if self.transforms and faces:
             video_frame = self.transforms['video_frame'](video_frame)
-            faces = [self.transforms['face'](face) for face in faces]
+            faces = [self.transforms['face'](faces[face]) for face in faces]
             audio_segment = self.transforms['audio_segment'](audio_segment)
          label = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
          # Accumulate features for all frames
