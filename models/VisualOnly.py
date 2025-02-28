@@ -42,7 +42,7 @@ class ResNetBlock(torch.nn.Module):
       # If (H_in, W_in) != (H_out, W_out) we need to downsample the result
       if self.stride > 1:
          X = X[:, :, ::self.stride, ::self.stride]
-         return Z + X
+      return Z + X
    
 
 class ResNet34(torch.nn.Module):
@@ -85,7 +85,8 @@ class VisualOnlyModel(torch.nn.Module):
       self.visual_encoder = ResNet34(embedding_dims)
       self.classifier = torch.nn.Linear(embedding_dims, num_classes)
 
-   def forward(self, X):
+   def forward(self, features):
+      X = features[0]
       embedding = self.visual_encoder(X)
       active_speaker = self.classifier(embedding)
       return embedding, active_speaker

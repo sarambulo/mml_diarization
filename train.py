@@ -11,6 +11,7 @@ from losses.DiarizationLoss import DiarizationLoss
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 CHECKPOINT_PATH = 'checkpoints'
 
+@torch.no_grad()
 def get_metrics(logits, labels):
     pred_labels = torch.argmax(logits, dim=-1)
     n = labels.shape[0]
@@ -31,19 +32,21 @@ def train_epoch(model, dataloader, optimizer, criterion):
 
     # Progress Bar
     batch_bar = tqdm(total=len(dataloader), dynamic_ncols=True, leave=False, position=0, desc='Train', ncols=5)
-
+    avg_loss = 0
+    avg_accuracy = 0
+    num_batches = len(dataloader)
     for i, batch in enumerate(dataloader):
         anchors, positive_pairs, negative_pairs, labels = batch
         optimizer.zero_grad() # Zero gradients
 
         # Join all inputs
         batch_size = labels.shape[0]
-        features = list(zip([anchors, positive_pairs, negative_pairs]))
+        features = list(zip(anchors, positive_pairs, negative_pairs))
 
         # feature: [(batch_size, ...), (batch_size, ...), (batch_size, ...)]
         # send to cuda
-        for feature in features:
-            feature = torch.concat(feature, dim=0).to(DEVICE)
+        for index, feature in enumerate(features):
+            features[index] = torch.concat(feature, dim=0).to(DEVICE)
             # feature: (batch_size * 3, ...)
         labels = labels.to(DEVICE)
 
@@ -53,6 +56,7 @@ def train_epoch(model, dataloader, optimizer, criterion):
             anchors        = embeddings[            :   batch_size]
             positive_pairs = embeddings[  batch_size: 2*batch_size]
             negative_pairs = embeddings[2*batch_size: 3*batch_size]
+            logits         = logits[:batch_size]
             # Use the type of output depending on the loss function you want to use
 
             loss = criterion(anchors, positive_pairs, negative_pairs, logits, labels)
@@ -60,40 +64,45 @@ def train_epoch(model, dataloader, optimizer, criterion):
         loss.backward() # This is a replacement for loss.backward()
         optimizer.step() # This is a replacement for optimizer.step()
 
+        accuracy = get_metrics(logits, labels)
+        avg_loss = (avg_loss * i + loss.item()) / (i + 1)
+        avg_accuracy = (avg_accuracy * i + accuracy) / (i + 1)
         # tqdm lets you add some details so you can monitor training as you train.
-        # batch_bar.set_postfix(
-        #     acc   = "{:.04f}% ({:.04f})".format(acc, acc_m.avg),
-        #     loss  = "{:.04f} ({:.04f})".format(loss.item(), loss_m.avg),
-        #     lr    = "{:.04f}".format(float(optimizer.param_groups[0]['lr'])))
+        batch_bar.set_postfix(
+            acc   = "{:.04%} ({:.04%})".format(accuracy, avg_accuracy),
+            loss  = "{:.04f} ({:.04f})".format(loss.item(), avg_loss),
+            lr    = "{:.06f}".format(float(optimizer.param_groups[0]['lr']))
+        )
 
         batch_bar.update() # Update tqdm bar
 
     batch_bar.close()
 
-    return loss
+    return accuracy, loss
 
-def main(model_name, epochs, batch_size, learning_rate):
+def main(model_name, epochs, batch_size, learning_rate, subset):
     print("Device: ", DEVICE)
     # Configuration
-    if model_name == 'VisualOnly':
+    if model_name == 'VisualOnlyModel':
         model = VisualOnlyModel(512, 2)
-        model.to(DEVICE)
+        model = model.to(DEVICE)
     else:
-        raise ValueError()
+        raise ValueError(f'Invalid model name {model_name}')
     optimizer = torch.optim.AdamW(model.parameters(), learning_rate)
     criterion = DiarizationLoss(0.5, 0.5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 'min', factor=0.1, patience=2, threshold=0.01
     )
     # Load data
-    train_dataset = MSDWildFrames('data', 'few_train', None, 0.001)
-    val_dataset = MSDWildFrames('data', 'many_val', None, 0.01)
-    train_dataloader = DataLoader(train_dataset, batch_size, True)
-    val_dataloader = DataLoader(val_dataset, batch_size, False)
+    train_dataset = MSDWildFrames('data', 'few_train', None, subset)
+    val_dataset = MSDWildFrames('data', 'many_val', None, subset)
+    train_dataloader = DataLoader(train_dataset, batch_size, True, collate_fn=train_dataset.build_batch)
+    val_dataloader = DataLoader(val_dataset, batch_size, False, collate_fn=val_dataset.build_batch)
     # Training process
     start_epoch = 0
     final_epoch = epochs
     metrics = {}
+    best_valid_acc = 0
     for epoch in range(start_epoch, final_epoch):
         print("\nEpoch {}/{}".format(epoch+1, final_epoch))
         # train
@@ -123,17 +132,19 @@ def main(model_name, epochs, batch_size, learning_rate):
         
         # You may want to call some schedulers inside the train function. What are these?
         if scheduler is not None:
-            scheduler.step()
+            scheduler.step(valid_loss)
     return
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train procedure")
     parser.add_argument("model_name", type=str, help="Model name")
-    parser.add_argument("-b", "--batch-size", type=int, default=128, help="Batch size")
+    parser.add_argument("-b", "--batch-size", type=int, default=256, help="Batch size")
     parser.add_argument("-e", "--epochs", type=int, default=10, help="Maximum number of epochs")
     parser.add_argument("-lr", "--learning-rate", type=float, default=0.0001, help="Initial learning rate")
+    parser.add_argument("-s", "--subset", type=float, default=0.01, help="Subset of the data to use")
     args = parser.parse_args()
     main(
         model_name=args.model_name, epochs=args.epochs,
-        batch_size=args.batch_size, learning_rate=args.learning_rate
+        batch_size=args.batch_size, learning_rate=args.learning_rate,
+        subset=args.subset
     )

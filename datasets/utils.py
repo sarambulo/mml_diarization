@@ -45,7 +45,7 @@ def read_audio(audio_stream, start_sec=0, end_sec=None):
     ):
         frames.append(frame["data"])
     if len(frames) > 0:
-        frames = torch.stack(frames, 0)
+        frames = torch.concat(frames, 0)
     return frames
 
 def read_video(path: str, start_sec=0, end_sec=None, max_frames=None, return_video=True, return_audio=True):

@@ -41,9 +41,9 @@ from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
 import random
 import torch
-import torchaudio
 import pandas as pd
-import torchvision.transforms.v2 as Transforms
+import torchvision.transforms.v2 as ImageTransforms
+import torchaudio.transforms as AudioTransforms
 
 IMG_WIDTH = 112
 IMG_HEIGHT = 112
@@ -137,17 +137,17 @@ class MSDWildFrames(MSDWildBase):
          self.transforms = transforms
       else:
          transforms = {}
-         image_transform = Transforms.Compose([
-            Transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
-            Transforms.ToDtype(torch.float32, scale=True),
-            # Transforms.RandomHorizontalFlip(p = 0.5),
-            # Transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9,1.1)),
-            # Transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-            Transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+         image_transform = ImageTransforms.Compose([
+            ImageTransforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+            ImageTransforms.ToDtype(torch.float32, scale=True),
+            # ImageTransforms.RandomHorizontalFlip(p = 0.5),
+            # ImageTransforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9,1.1)),
+            # ImageTransforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            ImageTransforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
          ])
          transforms['video_frame'] = image_transform
          transforms['face'] = image_transform
-         transforms['audio_segment'] = Transforms.Identity()
+         transforms['audio_segment'] = lambda x: torch.mean(x, dim=-1)
          self.transforms = transforms
         
    def __len__(self):
@@ -217,14 +217,9 @@ class MSDWildFrames(MSDWildBase):
       for _, row in frame_boxes.iterrows():
          face_id = int(row["face_id"])
          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
+         x1, y1, x2, y2 = max(x1, 0), max(y1, 0), max(x2, 0), max(y2, 0)
          if x2 > x1 and y2 > y1:
-               cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  
-         
-      cropped_faces = [cropped_faces[face_id] for face_id in sorted(cropped_faces)]
-      cropped_faces = [
-         self.transforms['face'](face) if face.numel() > 0 else torch.zeros(1)
-         for face in cropped_faces
-      ]
+            cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  
       return cropped_faces
 
 
@@ -263,7 +258,8 @@ class MSDWildFrames(MSDWildBase):
       # Transform features
       if self.transforms:
          video_frame = self.transforms['video_frame'](video_frame)
-         cropped_faces = [self.transforms['face'](face) for face in cropped_faces]
+         if cropped_faces:
+            cropped_faces = {face_id: self.transforms['face'](cropped_faces[face_id]) for face_id in cropped_faces}
          audio_segment = self.transforms['audio_segment'](audio_segment)
       labels = self.get_speakers_at_ts(labels, frame_timestamp) if labels else None
       # print(labels)
@@ -273,12 +269,18 @@ class MSDWildFrames(MSDWildBase):
    def get_positive_sample(self, frame_id, anchor_speaker_id):
       # Case: Last frame
       next_frame_offset = self.get_frame_loc(frame_id + 1)[1]
+      cropped_faces = {}
+      candidate_frame = frame_id
       if next_frame_offset == 0:
          # Use the previous frame
-         video_frame, audio_segment, labels, cropped_faces = self.get_features(frame_id - 1)
+         while anchor_speaker_id not in cropped_faces:
+            candidate_frame -= 1
+            video_frame, audio_segment, labels, cropped_faces = self.get_features(candidate_frame)
       else:
          # Use the next frame
-         video_frame, audio_segment, labels, cropped_faces = self.get_features(frame_id + 1)
+         while anchor_speaker_id not in cropped_faces:
+            candidate_frame += 1
+            video_frame, audio_segment, labels, cropped_faces = self.get_features(candidate_frame)
       positive_sample = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
       return positive_sample
    
@@ -293,7 +295,9 @@ class MSDWildFrames(MSDWildBase):
 
    def __getitem__(self, index):
       video_frame, audio_segment, labels, cropped_faces = self.get_features(index)
-      face_ids = list(range(len(cropped_faces)))
+      if len(cropped_faces) < 2:
+         return self.__getitem__(index + 1)
+      face_ids = list(cropped_faces.keys())
       random.shuffle(face_ids)
       anchor_speaker_id, negative_sample_speaker_id = face_ids[:2]
       anchor = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
@@ -308,29 +312,35 @@ class MSDWildFrames(MSDWildBase):
    
    def build_batch(self, batch_examples: list):
       # batch_examples: [(anchor1, pos1, neg1, label1), (anchor2, pos2, neg2, label2)]
-      # (anchor1, pos1, neg1)
-      # (anchor2, pos2, neg2)
       batch_examples = [ex for ex in batch_examples if ex is not None]
+      batch_size = len(batch_examples)
+      features = []
+      # features: (feature, element, example)
+      for feature_index in range(3):
+         feature = []
+         for element in range(3):
+            for example in range(batch_size):
+               feature.append(batch_examples[example][element][feature_index])
+         features.append(feature)
+      labels = torch.tensor([batch_examples[i][3] for i in range(batch_size)])
 
       if len(batch_examples) == 0:
          return None
+
+      padded_features = []
+      for feature in features:
+         feature = [torch.tensor(sample) if sample is not None else torch.zeros(1) for sample in feature]
+         feature = torch.nn.utils.rnn.pad_sequence(feature, batch_first=True)
+         padded_features.append(feature)
       
-      # Elements: (anchor1, anchor2), (pos1, pos2), (neg1, neg2), (label1, label2)
-      elements = list(zip(*batch_examples))
-
       padded_elements = []
-      for element in elements[:-1]:
-         padded_features = []
-         # Features: (vid_frame, aud_seg, face), (vid_frame, aud_seg, face)
-         features = list(zip(*element))
-         for feature in features:
-            feature = [torch.tensor(sample) if sample is not None else torch.zeros(1) for sample in feature]
-            feature = torch.nn.utils.rnn.pad_sequence(feature, batch_first=True)
-            padded_features.append(feature)
-         padded_elements.append(padded_features)
-      padded_elements.append(torch.tensor(elements[-1]))
+      for i in range(3):
+         element = []
+         for feature in padded_features:
+            element.append(feature[i * batch_size: (i + 1) * batch_size])
+         padded_elements.append(element)
 
-      return tuple(padded_features)
+      return tuple(padded_elements + [labels])
 
 class MSDWildVideos(MSDWildFrames):
    def __init__(self, data_path: str, partition: str, transforms):

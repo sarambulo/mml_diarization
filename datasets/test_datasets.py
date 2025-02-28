@@ -74,5 +74,9 @@ class TestMSDWildFrames():
       assert video_frame.dim() == 3
       assert video_frame.shape == (3, 112, 112)
       return True
+   
+   def test_face_crop(self):
+      msdwild = MSDWildFrames(Path('data'), 'few_train')
+      msdwild.get_features(23796)
 
       
