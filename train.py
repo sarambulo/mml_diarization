@@ -1,16 +1,32 @@
 from tqdm import tqdm
 import torch
+from torch.utils.data import DataLoader
+import argparse
+from audio_train import create_rttm_file, evaluate_model
+from datasets.MSDWild import MSDWildFrames
+from models.VisualOnly import VisualOnlyModel
+from pathlib import Path
+from losses.DiarizationLoss import DiarizationLoss
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-print("Device: ", DEVICE)
+CHECKPOINT_PATH = 'checkpoints'
 
 def get_metrics(logits, labels):
     pred_labels = torch.argmax(logits, dim=-1)
     n = labels.shape[0]
     n_correct = pred_labels[pred_labels==labels].shape[0]
     accuracy = n_correct / n
+    return accuracy
 
-def train_epoch(model, dataloader, optimizer, criterion, get_metrics, lr_scheduler, scaler, device, config):
+def save_model(model, metrics, epoch, path):
+    checkpoint = {
+        'epoch': epoch + 1,
+        'model_state_dict': model.state_dict(),
+        'metrics': metrics,
+    }
+    torch.save(checkpoint, path)
+
+def train_epoch(model, dataloader, optimizer, criterion):
     model.train()
 
     # Progress Bar
@@ -22,26 +38,27 @@ def train_epoch(model, dataloader, optimizer, criterion, get_metrics, lr_schedul
 
         # Join all inputs
         batch_size = labels.shape[0]
-        features = list(zip([anchors, positive_pairs, negative_pairs, labels]))
+        features = list(zip([anchors, positive_pairs, negative_pairs]))
 
+        # feature: [(batch_size, ...), (batch_size, ...), (batch_size, ...)]
         # send to cuda
         for feature in features:
-            feature = torch.concat(feature, dim=0).to(device)
-        labels = labels.to(device)
+            feature = torch.concat(feature, dim=0).to(DEVICE)
+            # feature: (batch_size * 3, ...)
+        labels = labels.to(DEVICE)
 
         # forward
         with torch.amp.autocast(DEVICE):  # This implements mixed precision. Thats it!
-            embedding, logit = model(features)
-
+            embeddings, logits = model(features)
+            anchors        = embeddings[            :   batch_size]
+            positive_pairs = embeddings[  batch_size: 2*batch_size]
+            negative_pairs = embeddings[2*batch_size: 3*batch_size]
             # Use the type of output depending on the loss function you want to use
-            loss = criterion(logit, labels)
 
-            # Get performance metrics
-            metrics = get_metrics()
+            loss = criterion(anchors, positive_pairs, negative_pairs, logits, labels)
 
-        scaler.scale(loss).backward() # This is a replacement for loss.backward()
-        scaler.step(optimizer) # This is a replacement for optimizer.step()
-        scaler.update()
+        loss.backward() # This is a replacement for loss.backward()
+        optimizer.step() # This is a replacement for optimizer.step()
 
         # tqdm lets you add some details so you can monitor training as you train.
         # batch_bar.set_postfix(
@@ -51,97 +68,72 @@ def train_epoch(model, dataloader, optimizer, criterion, get_metrics, lr_schedul
 
         batch_bar.update() # Update tqdm bar
 
-    # You may want to call some schedulers inside the train function. What are these?
-    if lr_scheduler is not None:
-        lr_scheduler.step()
-
     batch_bar.close()
 
-    return metrics, loss
+    return loss
 
-@torch.no_grad()
-def evaluate(model, dataloader, device, config):
-
-    model.eval()
-    batch_bar = tqdm(total=len(dataloader), dynamic_ncols=True, position=0, leave=False, desc='Val Cls.', ncols=5)
-
-    # metric meters
-    loss_m = AverageMeter()
-    acc_m = AverageMeter()
-
-    for i, (images, labels) in enumerate(dataloader):
-
-        # Move images to device
-        images, labels = images.to(device), labels.to(device)
-
-        # Get model outputs
-        with torch.inference_mode():
-            outputs = model(images)
-            loss = criterion(outputs['out'], labels)
-
-        # metrics
-        acc = accuracy(outputs['out'], labels)[0].item()
-        loss_m.update(loss.item())
-        acc_m.update(acc)
-
-        batch_bar.set_postfix(
-            acc         = "{:.04f}% ({:.04f})".format(acc, acc_m.avg),
-            loss        = "{:.04f} ({:.04f})".format(loss.item(), loss_m.avg))
-
-        batch_bar.update()
-
-    batch_bar.close()
-    return acc_m.avg, loss_m.avg
-
-def main():
-    start_epoch = epoch
-    final_epoch = epoch + config['epochs']
+def main(model_name, epochs, batch_size, learning_rate):
+    print("Device: ", DEVICE)
+    # Configuration
+    if model_name == 'VisualOnly':
+        model = VisualOnlyModel(512, 2)
+        model.to(DEVICE)
+    else:
+        raise ValueError()
+    optimizer = torch.optim.AdamW(model.parameters(), learning_rate)
+    criterion = DiarizationLoss(0.5, 0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 'min', factor=0.1, patience=2, threshold=0.01
+    )
+    # Load data
+    train_dataset = MSDWildFrames('data', 'few_train', None, 0.001)
+    val_dataset = MSDWildFrames('data', 'many_val', None, 0.01)
+    train_dataloader = DataLoader(train_dataset, batch_size, True)
+    val_dataloader = DataLoader(val_dataset, batch_size, False)
+    # Training process
+    start_epoch = 0
+    final_epoch = epochs
+    metrics = {}
     for epoch in range(start_epoch, final_epoch):
-        # epoch
         print("\nEpoch {}/{}".format(epoch+1, final_epoch))
-
         # train
         curr_lr = float(scheduler.get_last_lr()[0])
         metrics.update({'lr': curr_lr})
-        train_cls_acc, train_loss = train_epoch(model, cls_train_loader, optimizer, scheduler, scaler, DEVICE, config)
-        print("\nEpoch {}/{}: \nTrain Cls. Acc {:.04f}%\t Train Cls. Loss {:.04f}\t Learning Rate {:.04f}".format(epoch + 1, config['epochs'], train_cls_acc, train_loss, curr_lr))
+        train_acc, train_loss = train_epoch(model, train_dataloader, optimizer, criterion)
+        print("\nEpoch {}/{}: \nTrain Cls. Acc {:.04f}%\t Train Cls. Loss {:.04f}\t Learning Rate {:.04f}".format(epoch + 1, final_epoch, train_acc, train_loss, curr_lr))
         metrics.update({
-            'train_cls_acc': train_cls_acc,
+            'train_cls_acc': train_acc,
             'train_loss': train_loss,
         })
-        # classification validation
-        if eval_cls:
-            valid_cls_acc, valid_loss = valid_epoch_cls(model, cls_val_loader, DEVICE, config)
-            print("Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(valid_cls_acc, valid_loss))
-            metrics.update({
-                'valid_cls_acc': valid_cls_acc,
-                'valid_loss': valid_loss,
-            })
-
-        # retrieval validation
-        valid_ret_metrics = valid_epoch_ver(model, ver_val_loader, DEVICE, config)
-        valid_ret_acc = valid_ret_metrics['ACC']
-        print("Val Ret. Acc {:.04f}%".format(valid_ret_acc))
+        # validation
+        valid_acc, valid_loss = evaluate_model(model, val_dataloader)
+        print("Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(valid_acc, valid_loss))
         metrics.update({
-            'valid_ret_acc': valid_ret_acc, 'valid_ret_eer': valid_ret_metrics['EER']
+            'valid_cls_acc': valid_acc,
+            'valid_loss': valid_loss,
         })
 
         # save best model
-        if eval_cls:
-            if valid_cls_acc >= best_valid_cls_acc:
-                best_valid_cls_acc = valid_cls_acc
-                model_filename = os.path.join(config['checkpoint_dir'], 'best_cls.pth')
-                save_model(model, optimizer, scheduler, metrics, epoch, model_filename)
-                wandb.save(model_filename)
-                print("Saved best classification model")
+        if valid_acc >= best_valid_acc:
+            best_valid_acc = valid_acc
+            model_path = Path(CHECKPOINT_PATH, f'best_{model_name}.pth')
+            save_model(model, metrics, epoch, model_path)
+            print("Saved best model")
 
-        if valid_ret_acc >= best_valid_ret_acc:
-            best_valid_ret_acc = valid_ret_acc
-            model_filename = os.path.join(config['checkpoint_dir'], 'best_ret.pth')
-            save_model(model, optimizer, scheduler, metrics, epoch, model_filename)
-            wandb.save(model_filename)
-            print("Saved best retrieval model")
+        
+        # You may want to call some schedulers inside the train function. What are these?
+        if scheduler is not None:
+            scheduler.step()
+    return
 
-        # log to tracker
-        if run is not None:
-            run.log(metrics)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Train procedure")
+    parser.add_argument("model_name", type=str, help="Model name")
+    parser.add_argument("-b", "--batch-size", type=int, default=128, help="Batch size")
+    parser.add_argument("-e", "--epochs", type=int, default=10, help="Maximum number of epochs")
+    parser.add_argument("-lr", "--learning-rate", type=float, default=0.0001, help="Initial learning rate")
+    args = parser.parse_args()
+    main(
+        model_name=args.model_name, epochs=args.epochs,
+        batch_size=args.batch_size, learning_rate=args.learning_rate
+    )

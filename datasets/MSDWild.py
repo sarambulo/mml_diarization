@@ -116,12 +116,12 @@ class MSDWildBase(Dataset):
       return video_stream, audio_stream, labels, bounding_boxes
 
 class MSDWildFrames(MSDWildBase):
-   def __init__(self, data_path: str, partition: str, transforms = None):
+   def __init__(self, data_path: str, partition: str, transforms = None, subset: float = 1):
       """
       :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
       """
-      super().__init__(data_path, partition)
+      super().__init__(data_path, partition, subset)
       # Adding IDs to frames
       # Frame IDs are the position of each frame in this list
       # Each element of the list contains the file ID and the frame timestamp (for seek)
@@ -140,9 +140,9 @@ class MSDWildFrames(MSDWildBase):
          image_transform = Transforms.Compose([
             Transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
             Transforms.ToDtype(torch.float32, scale=True),
-            Transforms.RandomHorizontalFlip(p = 0.5),
-            Transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9,1.1)),
-            Transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            # Transforms.RandomHorizontalFlip(p = 0.5),
+            # Transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9,1.1)),
+            # Transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
             Transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
          ])
          transforms['video_frame'] = image_transform
@@ -259,7 +259,7 @@ class MSDWildFrames(MSDWildBase):
       result = next(iter(video_stream.seek(frame_timestamp)))
       video_frame = result['data']
       cropped_faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_offset)
-      audio_segment = self.get_audio_segment(audio_stream, frame_timestamp)
+      audio_segment = self.get_audio_segment(audio_stream, frame_id)
       # Transform features
       if self.transforms:
          video_frame = self.transforms['video_frame'](video_frame)
