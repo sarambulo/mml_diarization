@@ -1,5 +1,7 @@
 import torch
 from sklearn.cluster import AgglomerativeClustering
+import numpy as np
+
 
 class CNNBlock(torch.nn.Module):
 
@@ -99,17 +101,177 @@ class VisualOnlyModel(torch.nn.Module):
       with torch.inference_mode():
          embedding, active_speaker = self.forward(X)
       return embedding, active_speaker
+   
+   
+   def agg_clustering(self, embeddings, n_faces):
+      clustering = AgglomerativeClustering(
+         n_clusters = n_faces,
+         affinity ='cosine',
+         linkage='average'
+      )   
+      
+      cluster_labels = clustering.fit_predict(embeddings)
+      return cluster_labels
+      
 
    @torch.no_grad()
    def predict_video(self, X):
       # Set eval mode
       self.eval()
-      num_frames = X.shape[0]
+      all_video_frames, _, _, all_faces, _ = X
+      num_frames = len(all_video_frames)
+      
       embeddings = []
+      face_indices = []
+      frame_indices = []
+      active_speakers = []
+      
+      max_faces = max(len(faces) for faces in all_faces)
+      
       for t in range(num_frames):
-         frame = X[t]
-         embedding, active_speaker = self.predict_frame(frame)
-         embeddings.append(embedding)
-         # Perform agglomerative clustering
-         # TODO
-         pass
+         faces = all_faces[t]
+         
+         for face_idx, face in enumerate(faces):
+            embedding, active_logit = self.predict_frame(face)
+            is_active = True if active_logit[1] > 0 else False
+            if embedding is not None:
+               embeddings.append(embedding)
+               face_indices.append(face_idx)
+               frame_indices.append(t)
+               active_speakers.append(is_active)
+            
+      embeddings_array = np.array(embeddings)
+      
+      cluster_labels = agg_clustering(embeddings_array, max_faces)
+      
+      face_to_speaker = {}
+      
+      for i, (frame_idx, face_idx, speaker_id, is_active) in enumerate(zip(frame_indices, face_indices, cluster_labels, active_speakers)):
+         face_to_speaker[frame_idx][face_idx] = (speaker_id, is_active)
+         
+      results = {
+         'speaker_mapping':face_to_speaker,
+         'num_speakers':max_faces,
+         'num_frames':len(all_video_frames)
+      }
+      return results
+   
+   def active_frames_by_speaker_id(results):
+      num_speakers = results['num_speakers']
+      speaker_active_frames = {speaker_id: [] for speaker_id in range(num_speakers)}
+      
+      mapping_dict = results['speaker_mapping']
+      
+      for frame_idx in range(results['num_frames']):
+         if frame_idx not in mapping_dict:
+            continue
+         
+         for face_idx in mapping_dict[frame_idx]:
+            speaker_id, is_active = mapping_dict[frame_idx][face_idx]
+            if is_active:
+               speaker_active_frames[speaker_id].append(frame_idx)
+      
+      return speaker_active_frames
+   
+   def create_utterances(speaker_active_frames, fps=25, min_gap_frames=10):
+      utterances = {}
+      
+      for speaker_id, frames in speaker_active_frames.items():
+         frames = sorted(frames)
+         speaker_utterances = []
+         if not frames:
+            utterances[speaker_id] = 0
+            continue
+         current_utterance = {
+            'start_frame':frames[0],
+            'end_frame': frames[0]
+         }
+         for i in range(1, len(frames)):
+            current_frame = frames[i]
+            previous_frame = frames[i-1]
+            
+            if current_frame <= previous_frame + min_gap_frames:
+               #push end forward if it's within the minimum gap
+               current_utterance['end_frame'] = current_frame
+            else:
+               #process + add utterance
+               start_time = current_utterance['start_frame'] / fps
+               end_time = current_utterance['end_frame'] / fps
+               duration = end_time - start_time
+            
+               current_utterance['start_time'] = start_time
+               current_utterance['end_time'] = end_time
+               current_utterance['duration'] = duration
+               speaker_utterances.append(current_utterance)
+               
+               #reset
+               current_utterance = {
+                  'start_frame':current_frame,
+                  'end_frame':current_frame
+               }
+            
+            #process last utternace
+            start_time = current_utterance['start_frame'] / fps
+            end_time = current_utterance['end_frame'] / fps
+            duration = end_time - start_time
+        
+            current_utterance['start_time'] = start_time
+            current_utterance['end_time'] = end_time
+            current_utterance['duration'] = duration
+        
+            speaker_utterances.append(current_utterance)
+            
+            #filter out lil blips
+            min_duration = 0.2  
+            speaker_utterances = [
+                  utterance for utterance in speaker_utterances
+                  if utterance['duration'] >= min_duration
+            ]
+            
+            utterances[speaker_id] = speaker_utterances
+      
+      return utterances
+   
+   
+   def utterances_to_rttm(utterances, file_id):
+      rttm_lines = []
+    
+      for speaker_id, speaker_utterances in utterances.items():
+         for utterance in speaker_utterances:
+               start_time = f"{utterance['start_time']:.6f}"
+               duration = f"{utterance['duration']:.6f}"
+               speaker = f"{speaker_id}"  
+               
+               rttm_line = f"SPEAKER {file_id} {"0"} {start_time} {duration} {"NA"} {"NA"} {speaker} {"NA"} {"NA"}"
+               rttm_lines.append(rttm_line)
+      
+      #sort by start_time
+      rttm_lines.sort(key=lambda x: float(x.split()[3]))
+      
+      return rttm_lines
+   
+   
+   def predict_to_rttm_full(self, X, file_id):
+      results = predict_video(X)
+      active_frames = active_frames_by_speaker(results)
+      utterances = create_utterances(active_frames)
+      rttm_lines = utterances_to_rttm(utterances, file_id)
+      return rttm_lines
+         
+               
+         
+         
+         
+   
+   
+               
+      
+   
+      
+            
+               
+         
+      
+      
+   
+   
