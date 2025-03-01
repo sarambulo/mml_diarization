@@ -144,8 +144,8 @@ def main(model_name, epochs, batch_size, learning_rate, subset):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train procedure")
     parser.add_argument("model_name", type=str, help="Model name")
-    parser.add_argument("-b", "--batch-size", type=int, default=256, help="Batch size")
-    parser.add_argument("-e", "--epochs", type=int, default=10, help="Maximum number of epochs")
+    parser.add_argument("-b", "--batch-size", type=int, default=32, help="Batch size")
+    parser.add_argument("-e", "--epochs", type=int, default=3, help="Maximum number of epochs")
     parser.add_argument("-lr", "--learning-rate", type=float, default=0.0001, help="Initial learning rate")
     parser.add_argument("-s", "--subset", type=float, default=0.01, help="Subset of the data to use")
     args = parser.parse_args()

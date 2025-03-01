@@ -166,7 +166,7 @@ class MSDWildFrames(MSDWildBase):
       video_index = 2
       """
       if end is None:
-         end = len(self.video_last_frame_id)
+         end = len(self.video_last_frame_id) - 1
       if start > end:
          raise ValueError('Frame id not found')
       mid_index = (start + end) // 2
@@ -299,7 +299,9 @@ class MSDWildFrames(MSDWildBase):
    def __getitem__(self, index):
       video_frame, audio_segment, labels, cropped_faces = self.get_features(index)
       if len(cropped_faces) < 2:
-         return self.__getitem__(index + 1)
+         if index < len(self) - 1:
+            return self.__getitem__(index + 1)
+         return None
       face_ids = list(cropped_faces.keys())
       random.shuffle(face_ids)
       anchor_speaker_id, negative_sample_speaker_id = face_ids[:2]
