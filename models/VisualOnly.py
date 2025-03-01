@@ -118,21 +118,22 @@ class VisualOnlyModel(torch.nn.Module):
    def predict_video(self, X):
       # Set eval mode
       self.eval()
-      all_video_frames, _, _, all_faces, _ = X
-      num_frames = len(all_video_frames)
+      num_frames = len(X[2])
       
       embeddings = []
       face_indices = []
       frame_indices = []
       active_speakers = []
       
-      max_faces = max(len(faces) for faces in all_faces)
+      max_faces = max(len(faces) for faces in X[2])
       
       for t in range(num_frames):
-         faces = all_faces[t]
+         features = X[t]
+         # Join all faces
+         features[2] = torch.concat(features[2], dim=0)
          
+         embeddings, active_logits = self.predict_frame(features) 
          for face_idx, face in enumerate(faces):
-            embedding, active_logit = self.predict_frame(face)
             is_active = True if active_logit[1] > 0 else False
             if embedding is not None:
                embeddings.append(embedding)
@@ -242,7 +243,7 @@ class VisualOnlyModel(torch.nn.Module):
                duration = f"{utterance['duration']:.6f}"
                speaker = f"{speaker_id}"  
                
-               rttm_line = f"SPEAKER {file_id} {"0"} {start_time} {duration} {"NA"} {"NA"} {speaker} {"NA"} {"NA"}"
+               rttm_line = f"SPEAKER {file_id:05d} {"0"} {start_time} {duration} {"NA"} {"NA"} {speaker} {"NA"} {"NA"}"
                rttm_lines.append(rttm_line)
       
       #sort by start_time
@@ -252,10 +253,10 @@ class VisualOnlyModel(torch.nn.Module):
    
    
    def predict_to_rttm_full(self, X, file_id):
-      results = predict_video(X)
-      active_frames = active_frames_by_speaker(results)
-      utterances = create_utterances(active_frames)
-      rttm_lines = utterances_to_rttm(utterances, file_id)
+      results = self.predict_video(X)
+      active_frames = self.active_frames_by_speaker(results)
+      utterances = self.create_utterances(active_frames)
+      rttm_lines = self.utterances_to_rttm(utterances, file_id)
       return rttm_lines
          
                

@@ -200,9 +200,9 @@ class MSDWildFrames(MSDWildBase):
       active_speaker_ids = [speaker_ids[i] for i in range(len(start_times)) if start_times[i] <= timestamp < end_times[i]]
       if not active_speaker_ids:
         max_speaker_id = max(speaker_ids, default=0)  # Avoid error if speaker_ids is empty
-        return np.zeros(max_speaker_id + 1, dtype=int)  
+        return torch.zeros(max_speaker_id + 1, dtype=int)  
       max_speaker_id = max(speaker_ids)  # Get max speaker ID for array size
-      speaker_vector = np.zeros(max_speaker_id + 1, dtype=int)  
+      speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)  
       for speaker_id in active_speaker_ids:
          speaker_vector[speaker_id] = 1 
       return speaker_vector
