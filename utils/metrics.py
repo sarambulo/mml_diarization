@@ -36,6 +36,19 @@ def calculate_metrics_for_video(preds, targets, der=None, jer=None):
 
 
 def calculate_metrics_for_dataset(preds_dict, targets_dict):
+    if len(preds_dict) == 0:
+        metrics = {}
+        metrics["DER"] = 1.0
+        metrics["JER"] = 1.0
+        metrics["MS"] = None
+        metrics["MSR"] = 1.0
+        metrics["FA"] = None
+        metrics["FAR"] = 1.0
+        metrics["SE"] = None
+        metrics["SER"] = 1.0
+        metrics["metricsByVideo"] = {}
+        return metrics
+
     metricsByVideo = {}
     der = GreedyDiarizationErrorRate(skip_overlap=False)
     jer = JaccardErrorRate()

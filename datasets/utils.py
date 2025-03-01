@@ -4,6 +4,9 @@ from torchvision.io import VideoReader
 import torch
 import itertools
 import re
+import torchvision
+
+# torchvision.set_video_backend('cuda')
 
 def parse_rttm(path) -> np.array:
     """
