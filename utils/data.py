@@ -9,7 +9,7 @@ def rttm_to_annotations(path):
         for seg in d[videoId]:
             ann[Segment(start=seg["startTime"], end=seg["endTime"])] = seg["speakerId"]
         annotations[videoId] = ann
-    return annotations
+    return annotationss
 
 
 def load_rttm_by_video(path):
