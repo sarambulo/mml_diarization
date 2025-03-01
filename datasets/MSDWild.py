@@ -343,17 +343,16 @@ class MSDWildFrames(MSDWildBase):
       return tuple(padded_elements + [labels])
 
 class MSDWildVideos(MSDWildFrames):
-   def __init__(self, data_path: str, partition: str, transforms):
+   def __init__(self, data_path: str, partition: str, transforms, subset: float = 1):
       """
       :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
       """
-      super().__init__(data_path, partition, transforms)
+      super().__init__(data_path, partition, transforms, subset)
    def __len__(self):
       return len(self.video_names)
    def __getitem__(self, index):
-      file_id = self.video_names[index]
-      video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames, self).__getitem__(file_id)
+      video_stream, audio_stream, labels, bounding_boxes = super(MSDWildFrames, self).__getitem__(index)
       # Get frames from video stream
       all_video_frames = []
       all_audio_segments = []
@@ -361,10 +360,10 @@ class MSDWildVideos(MSDWildFrames):
       all_faces = []
       all_timestamps = []
       frame_offset = 0
-      if file_id == 0:
+      if index == 0:
          frame_id = 0
       else:
-         frame_id = self.video_last_frame_id[file_id - 1] + 1
+         frame_id = self.video_last_frame_id[index - 1] + 1
       for data in video_stream:
          video_frame, frame_timestamp = data['data'], data['pts']
          faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_offset)
@@ -383,7 +382,7 @@ class MSDWildVideos(MSDWildFrames):
          all_timestamps.append(frame_timestamp)
          frame_id += 1
          frame_offset += 1
-      return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps
+      return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps, self.video_names[index]
 
 
 
