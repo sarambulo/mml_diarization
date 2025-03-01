@@ -3,20 +3,20 @@ from torch.utils.data import DataLoader
 import numpy as np
 import os
 from pyannote.core import Annotation, Segment
-from pyannote.metrics.diarization import GreedyDiarizationErrorRate, JaccardErrorRate
 from datasets.MSDWild import MSDWildFrames
 from audio_train import AudioOnlyTDNN, AudioOnlyDataset, collate_fn
-from utils.metrics import calculate_metrics_for_video
 
 # File paths
-PREDICTIONS_RTTM = "predictions.rttm"
-TARGETS_RTTM = "/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample/all.rttm"
 MODEL_PATH = "checkpoints/best_model.pth"
-DATA_PATH = "/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample/"
+DATA_PATH = "/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample"
 OUTPUT_DIR = "predictions"
+FRAME_DURATION = 0.02  # Assuming each frame represents 20ms of audio
 
-# Convert binary predictions into pyannote.core.Annotation format
-def convert_to_annotation(predictions, frame_duration=0.02):
+
+def convert_to_annotation(predictions, video_id, frame_duration=FRAME_DURATION):
+    """
+    Convert binary predictions into pyannote.core.Annotation format.
+    """
     annotation = Annotation()
     num_frames, num_speakers = predictions.shape
 
@@ -30,46 +30,54 @@ def convert_to_annotation(predictions, frame_duration=0.02):
 
     return annotation
 
-# Load RTTM annotations from file
-def rttm_to_annotations(path):
-    annotations = {}
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            fields = line.strip().split()
-            if len(fields) == 10 and fields[0] == "SPEAKER":
-                file_id, start, duration, speaker = (
-                    fields[1],
-                    float(fields[3]),
-                    float(fields[4]),
-                    fields[7],
-                )
-                if file_id not in annotations:
-                    annotations[file_id] = Annotation()
-                annotations[file_id][Segment(start, start + duration)] = speaker
-    return annotations
 
-# Run inference and collect model predictions
-def collect_predictions_and_labels(model, test_loader, device):
+def collect_predictions(model, test_loader, device):
+    """
+    Run inference and collect predictions.
+    """
     model.eval()
-    all_predictions = []
-    all_labels = []
+    video_predictions = {}
 
     with torch.no_grad():
-        for batch in test_loader:
+        for batch_idx, batch in enumerate(test_loader):
             if batch is None:
                 continue
 
-            inputs, labels = batch
+            inputs, video_ids = batch  # Ensure test_loader provides video_ids for each batch
             inputs = inputs.to(device)
 
             # Get model predictions
             outputs = model(inputs)  # Shape: [batch_size, num_speakers]
             predictions = (outputs >= 0.5).cpu().numpy()  # Convert probabilities to binary decisions
 
-            all_predictions.extend(predictions)
-            all_labels.extend(labels.numpy())
+            for i, video_id in enumerate(video_ids):
+                if video_id not in video_predictions:
+                    video_predictions[video_id] = []
+                video_predictions[video_id].append(predictions[i])
 
-    return np.array(all_predictions), np.array(all_labels)
+    # Convert lists to numpy arrays
+    for video_id in video_predictions:
+        video_predictions[video_id] = np.vstack(video_predictions[video_id])
+
+    return video_predictions
+
+
+def save_rttm(predictions_dict, output_dir):
+    """
+    Save predictions in RTTM format.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for video_id, predictions in predictions_dict.items():
+        annotation = convert_to_annotation(predictions, video_id)
+        output_file = os.path.join(output_dir, f"{video_id}.rttm")
+
+        with open(output_file, "w") as f:
+            for segment, speaker in annotation.itertracks():
+                f.write(f"SPEAKER {video_id} {segment.start:.3f} {segment.duration:.3f} <NA> <NA> {speaker} <NA> <NA>\n")
+
+        print(f"Saved RTTM file: {output_file}")
+
 
 def main():
     print("Loading test dataset...")
@@ -96,29 +104,12 @@ def main():
 
     # Run inference
     print("Running inference...")
-    predictions, ground_truth = collect_predictions_and_labels(model, test_loader, device)
+    predictions = collect_predictions(model, test_loader, device)
 
-    # Convert predictions and ground truth to pyannote Annotation format
-    preds_annotation = convert_to_annotation(predictions)
-    targets_annotation = rttm_to_annotations(TARGETS_RTTM)
+    # Save RTTM files
+    print("Saving RTTM files...")
+    save_rttm(predictions, OUTPUT_DIR)
 
-    print("Calculating metrics...")
-    metrics = calculate_metrics_for_video(preds_annotation, targets_annotation)
-
-    # Print results
-    print("\nDiarization Results:")
-    for metric_name, metric_value in metrics.items():
-        print(f"{metric_name}: {metric_value:.4f}")
-
-    # Save predictions in RTTM format
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    predictions_file = os.path.join(OUTPUT_DIR, "predictions.rttm")
-
-    with open(predictions_file, "w") as f:
-        for segment, speaker in preds_annotation.itertracks():
-            f.write(f"SPEAKER test {segment.start:.3f} {segment.duration:.3f} <NA> <NA> {speaker} <NA> <NA>\n")
-
-    print(f"\nPredictions saved to {predictions_file}")
 
 if __name__ == "__main__":
     main()
