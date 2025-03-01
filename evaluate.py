@@ -6,10 +6,10 @@ from datasets.MSDWild import MSDWildVideos
 from torch.utils.data import DataLoader
 from pathlib import Path
 
-def evaluate(model, test_loader, output_rttm_path="predictions"):
+def evaluate(model, test_loader, output_rttm_path, ground_truth_path):
    model.eval()
    device = next(model.parameters()).device
-   with Path(output_rttm_path / 'output.rttm').open('w') as output_file:
+   with Path(output_rttm_path).open('w') as output_file:
       with torch.no_grad():
          for i, batch in enumerate(test_loader):
             if batch is None:
@@ -29,7 +29,7 @@ def evaluate(model, test_loader, output_rttm_path="predictions"):
    
    # Calculate metrics
    preds = rttm_to_annotations(output_rttm_path)
-   targets = rttm_to_annotations("data/test/few_val.rttm")
+   targets = rttm_to_annotations(ground_truth_path)
    
    metrics = calculate_metrics_for_dataset(preds, targets)
    
@@ -53,7 +53,10 @@ if __name__=='__main__':
    model.load_state_dict(checkpoint['model_state_dict'])
 
    # Data
-   val_dataset = MSDWildVideos('data', 'many_val', None, 0.1)
+   val_dataset = MSDWildVideos('data_sample', 'many_val', None, 1, max_frames=30)
    # val_dataloader = DataLoader(val_dataset, 1, False)
-   metrics = evaluate(model=model, test_loader=val_dataset, output_rttm_path=Path('predictions'))
+   metrics = evaluate(
+      model=model, test_loader=val_dataset,
+      output_rttm_path=Path('predictions', 'output.rttm'), ground_truth_path=Path("data_sample/few_val.rttm")
+   )
    print(metrics)

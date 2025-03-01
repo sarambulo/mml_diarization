@@ -43,7 +43,7 @@ import random
 import torch
 import pandas as pd
 import torchvision.transforms.v2 as ImageTransforms
-import torchaudio.transforms as AudioTransforms
+# import torchaudio.transforms as AudioTransforms
 
 IMG_WIDTH = 112
 IMG_HEIGHT = 112
@@ -57,14 +57,17 @@ class MSDWildBase(Dataset):
       """
       super().__init__()
       self.data_path = data_path
+
       # Parse the rttm file to extract the file ids and labels
       rttm_filename = f"{partition}.rttm"
       rttm_path = Path(data_path, rttm_filename)
       rttm_data = parse_rttm(rttm_path)
       self.video_names = list(rttm_data.keys())
-      random.shuffle(self.video_names)
+
+      # Subset the data
       N = len(self.video_names)
       self.video_names = self.video_names[:int(N * subset)]
+
       self.video_durations, self.video_fps = self.get_video_metadata(self.video_names)
       self.video_num_frames = np.floor(self.video_durations * self.video_fps).astype(int)
       self.rttm_data = rttm_data # keys: video_names, items: labels
@@ -343,12 +346,13 @@ class MSDWildFrames(MSDWildBase):
       return tuple(padded_elements + [labels])
 
 class MSDWildVideos(MSDWildFrames):
-   def __init__(self, data_path: str, partition: str, transforms, subset: float = 1):
+   def __init__(self, data_path: str, partition: str, transforms, subset: float = 1, max_frames = 30):
       """
       :param data_path str: path to the directory where the data is stored 
       :param partition str: few_train, few_val or many_val
       """
       super().__init__(data_path, partition, transforms, subset)
+      self.max_frames = max_frames
    def __len__(self):
       return len(self.video_names)
    def __getitem__(self, index):
@@ -359,15 +363,16 @@ class MSDWildVideos(MSDWildFrames):
       all_labels = []
       all_faces = []
       all_timestamps = []
-      frame_offset = 0
       if index == 0:
          frame_id = 0
       else:
          frame_id = self.video_last_frame_id[index - 1] + 1
-      for data in video_stream:
+      for frame_offset, data in enumerate(video_stream):
+         if frame_offset >= self.max_frames:
+            break
          video_frame, frame_timestamp = data['data'], data['pts']
          faces = self.extract_faces_from_frame(video_frame, bounding_boxes, frame_offset)
-         audio_segment = self.get_audio_segment(audio_stream, frame_id)
+         audio_segment = self.get_audio_segment(audio_stream, frame_id + frame_offset)
          # Transform features
          if self.transforms and faces:
             video_frame = self.transforms['video_frame'](video_frame)
@@ -380,8 +385,6 @@ class MSDWildVideos(MSDWildFrames):
          all_labels.append(label)
          all_faces.append(faces)
          all_timestamps.append(frame_timestamp)
-         frame_id += 1
-         frame_offset += 1
       return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps, self.video_names[index]
 
 

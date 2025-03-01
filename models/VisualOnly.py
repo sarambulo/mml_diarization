@@ -1,3 +1,4 @@
+from matplotlib.pylab import f
 import torch
 from sklearn.cluster import AgglomerativeClustering
 import numpy as np
@@ -88,7 +89,7 @@ class VisualOnlyModel(torch.nn.Module):
       self.classifier = torch.nn.Linear(embedding_dims, num_classes)
 
    def forward(self, features):
-      X = features[0]
+      X = features[2]
       embedding = self.visual_encoder(X)
       active_speaker = self.classifier(embedding)
       return embedding, active_speaker
@@ -106,8 +107,8 @@ class VisualOnlyModel(torch.nn.Module):
    def agg_clustering(self, embeddings, n_faces):
       clustering = AgglomerativeClustering(
          n_clusters = n_faces,
-         affinity ='cosine',
-         linkage='average'
+         metric ='euclidean',
+         linkage='ward'
       )   
       
       cluster_labels = clustering.fit_predict(embeddings)
@@ -128,36 +129,36 @@ class VisualOnlyModel(torch.nn.Module):
       max_faces = max(len(faces) for faces in X[2])
       
       for t in range(num_frames):
-         features = X[t]
-         # Join all faces
-         features[2] = torch.concat(features[2], dim=0)
-         
-         embeddings, active_logits = self.predict_frame(features) 
+         features = X[0][t], X[1][t], torch.stack(X[2][t], dim=0)         
+         frame_embeddings, active_logits = self.predict_frame(features) 
+         faces = features[2][::]
          for face_idx, face in enumerate(faces):
-            is_active = True if active_logit[1] > 0 else False
-            if embedding is not None:
-               embeddings.append(embedding)
+            is_active = torch.argmax(active_logits[face_idx]).item()
+            if frame_embeddings is not None:
+               embeddings.append(frame_embeddings)
                face_indices.append(face_idx)
                frame_indices.append(t)
                active_speakers.append(is_active)
             
-      embeddings_array = np.array(embeddings)
+      embeddings_array = torch.concat(embeddings, dim=0).cpu().numpy()
       
-      cluster_labels = agg_clustering(embeddings_array, max_faces)
+      cluster_labels = self.agg_clustering(embeddings_array, max_faces)
       
       face_to_speaker = {}
       
       for i, (frame_idx, face_idx, speaker_id, is_active) in enumerate(zip(frame_indices, face_indices, cluster_labels, active_speakers)):
+         if frame_idx not in face_to_speaker:
+            face_to_speaker[frame_idx] = {}
          face_to_speaker[frame_idx][face_idx] = (speaker_id, is_active)
          
       results = {
          'speaker_mapping':face_to_speaker,
          'num_speakers':max_faces,
-         'num_frames':len(all_video_frames)
+         'num_frames':len(features[0])
       }
       return results
    
-   def active_frames_by_speaker_id(results):
+   def active_frames_by_speaker_id(self, results):
       num_speakers = results['num_speakers']
       speaker_active_frames = {speaker_id: [] for speaker_id in range(num_speakers)}
       
@@ -174,20 +175,20 @@ class VisualOnlyModel(torch.nn.Module):
       
       return speaker_active_frames
    
-   def create_utterances(speaker_active_frames, fps=25, min_gap_frames=10):
+   def create_utterances(self, speaker_active_frames, fps=25, min_gap_frames=10):
       utterances = {}
       
       for speaker_id, frames in speaker_active_frames.items():
          frames = sorted(frames)
          speaker_utterances = []
          if not frames:
-            utterances[speaker_id] = 0
+            utterances[speaker_id] = speaker_utterances
             continue
          current_utterance = {
             'start_frame':frames[0],
             'end_frame': frames[0]
          }
-         for i in range(1, len(frames)):
+         for i in range(0, len(frames)):
             current_frame = frames[i]
             previous_frame = frames[i-1]
             
@@ -223,7 +224,7 @@ class VisualOnlyModel(torch.nn.Module):
             speaker_utterances.append(current_utterance)
             
             #filter out lil blips
-            min_duration = 0.2  
+            min_duration = 0.0  
             speaker_utterances = [
                   utterance for utterance in speaker_utterances
                   if utterance['duration'] >= min_duration
@@ -234,9 +235,10 @@ class VisualOnlyModel(torch.nn.Module):
       return utterances
    
    
-   def utterances_to_rttm(utterances, file_id):
+   def utterances_to_rttm(self, utterances, file_id):
       rttm_lines = []
-    
+      if len(utterances) == 0:
+         return []
       for speaker_id, speaker_utterances in utterances.items():
          for utterance in speaker_utterances:
                start_time = f"{utterance['start_time']:.6f}"
@@ -254,7 +256,7 @@ class VisualOnlyModel(torch.nn.Module):
    
    def predict_to_rttm_full(self, X, file_id):
       results = self.predict_video(X)
-      active_frames = self.active_frames_by_speaker(results)
+      active_frames = self.active_frames_by_speaker_id(results)
       utterances = self.create_utterances(active_frames)
       rttm_lines = self.utterances_to_rttm(utterances, file_id)
       return rttm_lines
