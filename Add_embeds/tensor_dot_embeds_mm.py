@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from sklearn.cluster import AgglomerativeClustering
+from torchsummary import summary
 
 
 class MultimodalDataset(Dataset):
@@ -19,10 +20,13 @@ class MultimodalDataset(Dataset):
 
 
 class TensorDotMultimodalModel(nn.Module):
-    def __init__(self, embedding_dim=512, fusion_dim=512, num_speakers=10):
+    def __init__(self, embedding_dim=512, reduced_dim=128, fusion_dim=512, num_speakers=10):
         super(TensorDotMultimodalModel, self).__init__()
+
+        self.projection = nn.Linear(embedding_dim, reduced_dim)
+
         self.fusion_layer = nn.Sequential(
-            nn.Linear(embedding_dim * embedding_dim, 2 * embedding_dim), #262144 -> 2*512 (1024)
+            nn.Linear(reduced_dim * reduced_dim, 2 * embedding_dim), #16384 -> 2*512 (1024)
             nn.BatchNorm1d(2 * embedding_dim), #1024
             nn.ReLU(),
             nn.Dropout(0.3),
@@ -37,8 +41,10 @@ class TensorDotMultimodalModel(nn.Module):
         self.classifier = nn.Linear(fusion_dim, self.num_speakers)
 
     def forward(self, audio_embedding, visual_embedding):   #get embed
-        combined_embedding = torch.bmm(audio_embedding.unsqueeze(2), visual_embedding.unsqueeze(1)) #mat mul both embeds ((batch_size, 512, 1) + (batch_size, 1, 512) -> (batch_size, 512, 512))
-        combined_embedding = combined_embedding.view(combined_embedding.size(0), -1) #reshape into (batch_size, 262144)
+        audio_embedding = self.projection(audio_embedding)  # (batch_size, 128)
+        visual_embedding = self.projection(visual_embedding)
+        combined_embedding = torch.bmm(audio_embedding.unsqueeze(2), visual_embedding.unsqueeze(1)) #mat mul both embeds ((batch_size, 128, 1) + (batch_size, 1, 128) -> (batch_size, 128, 128))
+        combined_embedding = combined_embedding.view(combined_embedding.size(0), -1) #reshape into (batch_size, 16384)
         fused_embedding = self.fusion_layer(combined_embedding)
         return fused_embedding
 
@@ -87,7 +93,9 @@ def when_classify():
     dataset = MultimodalDataset(audio_embeddings, visual_embeddings, labels)
     dataloader = DataLoader(dataset, batch_size=16, shuffle=True)
 
-    model = TensorDotMultimodalModel(embedding_dim=512, fusion_dim=512, num_speakers=10)
+    model = TensorDotMultimodalModel(embedding_dim=512, reduced_dim=128, fusion_dim=512, num_speakers=10)
+    summary(model, [(512,), (512,)], batch_size=16, device=str(device))
+    # summary(model, input_size=[(16, 512), (16, 512)], device=str(device))
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
@@ -95,14 +103,15 @@ def when_classify():
 
 
 def when_cluster(audio_embeddings=torch.randn(100, 512), visual_embeddings=torch.randn(100, 512)):
-    model = TensorDotMultimodalModel(embedding_dim=512, fusion_dim=512, num_speakers=10)
+    model = TensorDotMultimodalModel(embedding_dim=512, reduced_dim=128, fusion_dim=512, num_speakers=10)
     speaker_labels = model.predict_speakers(audio_embeddings, visual_embeddings)
     print("Predicted Speaker Labels:", speaker_labels)
 
 
 # Example 
-print("Classification:")
-when_classify()
+if __name__ == "__main__":
+    print("Classification tensor:")
+    when_classify()
 
-print("Clustering:")
-when_cluster()
+    print("Clustering tensor:")
+    when_cluster()
