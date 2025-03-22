@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Dict, Tuple, List
 import torch
 
 def read_video(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -29,6 +29,15 @@ def downsample_video(video_frames: torch.Tensor, timestamps: torch.Tensor, frame
       - video_data (torch.Tensor): Shape (ceil(Frames / factor), C, H, W)
       - timestamps (torch.Tensor): Shape (ceil(Frames / factor),)
       - frame_ids  (torch.Tensor): Shape (ceil(Frames / factor),)
+   """
+   return
+
+def parse_bounding_boxes(
+      bounding_boxes_path: str
+   ) -> List[Dict]:
+   """
+   Read the file with the bounding boxes and return a list of length `Frames` with
+   dictionaries with the face_ids as keys and the bounding boxes coordinates as values
    """
    return
 
