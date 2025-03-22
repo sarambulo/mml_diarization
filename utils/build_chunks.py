@@ -9,6 +9,7 @@ def build_chunks(
    # Get video reader (generator)
    video_reader = read_video(video_path=video_path, seconds=seconds)
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
+   #parse_rttm outside loop
    chunks = []
    for chunk in video_reader:
       video_data, audio_data, timestamps, frame_ids = chunk
