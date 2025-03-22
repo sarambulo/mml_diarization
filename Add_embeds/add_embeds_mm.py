@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from sklearn.cluster import AgglomerativeClustering
+from models.VisualOnly import VisualOnlyModel
+from audio_train import AudioOnlyTDNN
 
 # Dataset Class
 class MultimodalDataset(Dataset):
@@ -22,6 +24,8 @@ class MultimodalDataset(Dataset):
 class AddSimpleMultimodalModel(nn.Module):
     def __init__(self, embedding_dim=512, fusion_dim=512, num_speakers=10):
         super(AddSimpleMultimodalModel, self).__init__()
+        self.audio_only = AudioOnlyTDNN()
+        self.visual_only = VisualOnlyModel()
         self.fusion_layer = nn.Sequential(
             nn.Linear(2 * embedding_dim, 2 * embedding_dim),    #2*512 (1024) -> 2*512 (1024)
             nn.BatchNorm1d(2 * embedding_dim),  #2*512 (1024)
@@ -38,6 +42,7 @@ class AddSimpleMultimodalModel(nn.Module):
         self.classifier = nn.Linear(fusion_dim, self.num_speakers)
 
     def forward(self, audio_embedding, visual_embedding):    #get embed
+        self.audio_only()
         combined_embedding = torch.cat((audio_embedding, visual_embedding), dim=1)  #concatenate both embeds ((batch_size, 512) + (batch_size, 512) -> (batch_size, 1024))
         fused_embedding = self.fusion_layer(combined_embedding)
         return fused_embedding
@@ -96,8 +101,9 @@ def when_cluster(audio_embeddings = torch.randn(100, 512), visual_embeddings = t
     speaker_labels = model.predict_speakers(audio_embeddings, visual_embeddings)
     print("Predicted Speaker Labels:", speaker_labels)
 
-print("Classification: ")
-when_classify()
+if __name__ == "__main__":
+    print("Classification add:")
+    when_classify()
 
-print("Clustering")
-when_cluster()
+    print("Clustering add:")
+    when_cluster()
