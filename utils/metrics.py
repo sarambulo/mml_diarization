@@ -6,8 +6,8 @@ from pyannote.metrics.diarization import (
 import pandas as pd
 import json
 
-PATH_TO_PREDS = "test.rttm"
-PATH_TO_TARGETS = "data/test/many.val.rttm"
+PATH_TO_PREDS = "aws_transcribe_rttms"
+PATH_TO_TARGETS = "data/few.val.rttm"
 
 
 def calculate_metrics_for_video(preds, targets, der=None, jer=None):
@@ -72,7 +72,7 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     metrics["SE"] = float(df.SE.mean())
     metrics["SER"] = float(df.SE.sum() / df.totalDuration.sum())
 
-    metrics["metricsByVideo"] = metricsByVideo
+    # metrics["metricsByVideo"] = metricsByVideo
 
     return metrics
 
