@@ -1,25 +1,19 @@
 from typing import Literal
-from video import create_visual_pairs
+from video import create_video_pairs
 from audio import create_audio_pairs
+from utils import crawl_chunks_dir
+from config import *
 
-CHUNK_LENGTH_SECS = 3
-AUDIO_LENGTH_SECS = 0.2
 
-
-def create_pairs(dir: str, type: Literal["audio", "visual"]) -> None:
+def create_pairs(
+    input_dir: str, output_dir: str, type: Literal["audio", "visual"]
+) -> None:
+    chunks = crawl_chunks_dir(input_dir)
     if type == "audio":
-        create_audio_pairs(dir)
+        create_audio_pairs(chunks, output_dir)
     else:
-        create_visual_pairs(dir)
-
-
-def create_audio_pairs(dir):
-    pass
-
-
-def create_video_pairs(dir):
-    pass
+        create_video_pairs(chunks, output_dir)
 
 
 if __name__ == "__main__":
-    print()
+    create_pairs(INPUT_DIR, OUTPUT_DIR, "audio")
