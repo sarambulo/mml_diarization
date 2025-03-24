@@ -68,13 +68,20 @@ def create_pairs(input_file_path):
         pair_info = {}
         skipped_frames = [] #collect frames which are speaking but combined pair is not found
         
-        for current_frame, current_chunk in anchor_speaking_frames:
+        for current_frame, current_chunk, _ in anchor_speaking_frames:
             pos_chunk, pos_frame = get_positive_pair(current_chunk, current_frame, anchor_speaking_frames) #get positive pair from speaking_frames only
             neg_chunk, neg_speaker, neg_frame = get_combined_negative_pair() #to be implemented - get negative pair for different face, speaking vs not speaking depends on probability
-            #append to pair info
-        for frame in anchor_non_speaking_frames + skipped_frames: #visual only case
-            pos_chunk, pos_frame = get_positive_pair(anchor_speaker, anchor_frames, anchor_frames) #get positive pair from any anchor frame
+            if pos_chunk and neg_chunk:
+                video_flag, audio_flag = True, True
+                #append to pair info
+            else:
+                skipped_frames.append((current_frame, current_chunk, 1))
+                
+        for current_frame, current_frame, is_speaking in anchor_non_speaking_frames + skipped_frames: #visual only case
+            pos_chunk, pos_frame = get_positive_pair(current_chunk, current_frame, anchor_frames) #get positive pair from any anchor frame
             neg_chunk, neg_speaker, neg_frame = get_visual_negative_pair(anchor_speaker, current_chunk, chunk_speakers) #get negative pair without speaking restriction
+            if pos_chunk and neg_chunk:
+                video_flag, audio_flag = True, False
             #append to pair info
         
         return pair_info
