@@ -11,6 +11,7 @@ def build_chunks(
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
    chunks = []
    for chunk in video_reader:
+      # Video data (F, C, H, W), Audio data (F, SamplesPerFrame, C)
       video_data, audio_data, timestamps, frame_ids = chunk
       audio_data = flatten_audio(audio_data)
       video_data, timestamps, frame_ids = downsample_video(
@@ -25,9 +26,21 @@ def build_chunks(
          faces[speaker_id] = transform_video(
             video_frames=faces[speaker_id], height=img_height, width=img_width, scale=scale
          )
-      melspectogram = transform_audio(audio_data)
+      melspectogram = transform_audio(audio_data) # (Frequencies, Time)
       speaker_ids = list(faces.keys())
       is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids)
       # Store chunk
       chunks.append((faces, melspectogram, is_speaking))
    return chunks
+
+def main():
+   # Go to the data directory
+   # Scan the files to identify video ids
+   # For each video id
+      # Call build chunks
+      # Store the results on disk
+   return
+
+if __name__ == '__main__':
+   # Parse args like data directory
+   main()
