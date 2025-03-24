@@ -1,73 +1,78 @@
 from typing import Dict, Tuple, List
 import torch
+import numpy as np
+import librosa
+# def read_audio(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+#    """
+#    Reads a video file and returns video data, audio data, and timestamps.
 
-def read_audio(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-   """
-   Reads a video file and returns video data, audio data, and timestamps.
+#    :param video_path: Path to the video file.
+#    :param seconds: Duration of the video to read in seconds.
 
-   :param video_path: Path to the video file.
-   :param seconds: Duration of the video to read in seconds.
+#    :return: A generator that yields a tuple containing:
 
-   :return: A generator that yields a tuple containing:
+#       - video_data (torch.Tensor): Shape (Frames, C, H, W)
+#       - audio_data (torch.Tensor): Shape (Frames, SamplingRate, C)
+#       - timestamps (torch.Tensor): Shape (Frames,)
+#       - frame_ids  (torch.Tensor): Shape (Frames,)
+#    """
+#    return
 
-      - video_data (torch.Tensor): Shape (Frames, C, H, W)
-      - audio_data (torch.Tensor): Shape (Frames, SamplingRate, C)
-      - timestamps (torch.Tensor): Shape (Frames,)
-      - frame_ids  (torch.Tensor): Shape (Frames,)
-   """
-   return
-
-def downsample_audio(video_frames: torch.Tensor, timestamps: torch.Tensor, frame_ids: torch.Tensor, factor: int = 5) -> Tuple[torch.Tensor, torch.Tensor]:
-   """
-   Downsamples a video and returns the remaining frames, timestamps and frame IDs.
-   The number of remaining frames is `ceil(Frames / factor)`
+# def downsample_audio(video_frames: torch.Tensor, timestamps: torch.Tensor, frame_ids: torch.Tensor, factor: int = 5) -> Tuple[torch.Tensor, torch.Tensor]:
+#    """
+#    Downsamples a video and returns the remaining frames, timestamps and frame IDs.
+#    The number of remaining frames is `ceil(Frames / factor)`
    
-   :param video_frames: Shape (Frames, FPS, C, H, W)
-   :param timestamps: Shape (Frames,
+#    :param video_frames: Shape (Frames, FPS, C, H, W)
+#    :param timestamps: Shape (Frames,
 
-  :return: A tuple containing:
-      - video_data (torch.Tensor): Shape (ceil(Frames / factor), C, H, W)
-      - timestamps (torch.Tensor): Shape (ceil(Frames / factor),)
-      - frame_ids  (torch.Tensor): Shape (ceil(Frames / factor),)
+#   :return: A tuple containing:
+#       - video_data (torch.Tensor): Shape (ceil(Frames / factor), C, H, W)
+#       - timestamps (torch.Tensor): Shape (ceil(Frames / factor),)
+#       - frame_ids  (torch.Tensor): Shape (ceil(Frames / factor),)
+#    """
+#    return
+
+def flatten_audio(audio_data: np.ndarray) -> np.ndarray:
+   
    """
-   return
+    Flattens a multi-channel audio input into a single channel (mono) signal
+    by averaging across channels. If the input is already mono, it is returned
+    unchanged.
+    
+    Parameters:
+        audio_data (np.ndarray): Audio data array. 
+                                 Shape could be (samples,) or (channels, samples).
 
-def flatten_audio(
-      bounding_boxes_path: str
-   ) -> List[Dict]:
-   """
-   Read the file with the bounding boxes and return a list of length `Frames` with
-   dictionaries with the face_ids as keys and the bounding boxes coordinates as values
-   """
-   return
+    Returns:
+        np.ndarray: Flattened mono audio data (shape: (samples,)).
+    """
+    # If audio has more than one dimension (e.g., [channels, samples]),
+    # average across channels to get a single channel.
+   if audio_data.ndim > 1:
+        audio_data = np.mean(audio_data, axis=0)
+   return audio_data 
 
-def extract_faces(
-      video_frames: torch.Tensor, frame_ids: torch.Tensor, bounding_boxes: torch.Tensor
-   ) ->  Tuple[torch.Tensor, torch.Tensor]:
-   """
-   Extract the faces identified by the provided bounding boxes
+def transform_audio(
+    audio_data: np.ndarray,
+    sr: int = 16000,
+    n_mels: int = 128,
+    fmax: int = 8000
+) -> np.ndarray:
+    """
+    Transforms audio into a log-mel spectrogram using librosa.
+    
+    Parameters:
+        audio_data (np.ndarray): Mono audio data (1D array).
+        sr (int): Sampling rate of the audio. Default is 16k.
+        n_mels (int): Number of Mel bands to generate.
+        fmax (int): Maximum frequency when converting to Mel scale. Typically sr/2.
 
-   :param video_frames: Shape (Frames, C, H, W)
-   :param frame_ids: Shape (Frames,)
-   :param bounding_boxes: List of length Frames with dictionaries. Each dictionary has
-   the face ID as a key and the bounding box as the value
+    Returns:
+        np.ndarray: The log-mel spectrogram of shape (n_mels, time_frames).
+    """
 
-   :return: A dictionary with face_ids as keys and extracted bounding boxes as values
-   """
-   return
+    mel_spec = librosa.feature.melspectrogram(y=audio_data, sr=sr, n_mels=n_mels, fmax=fmax)
+    mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
 
-def transform_video(
-   video_frames: torch.Tensor, height: int = 112, width: int = 112, scale: int = True
-) -> torch.Tensor:
-   """
-   Set all frames to the same size and data type, and scales the values to
-   [0, 1]
-
-   :param video_frames: Shape (Frames, C, H, W)
-   :param height: Number of rows in the resulting frames
-   :param width: Number of columns in the resulting frames
-   :param scale: Whether to scale values from [0, 255] to [0, 1]
-
-   :return: Transformed video frames
-   """
-   return
+    return mel_spec_db
