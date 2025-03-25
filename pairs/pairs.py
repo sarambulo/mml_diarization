@@ -25,18 +25,22 @@ def create_lookups(df):
 
 
 def get_positive_pair(current_chunk, current_frame, anchor_frames):
-    same_chunk_frames = [
-        (ch, fr)
-        for ch, fr, _ in anchor_frames
-        if ch == current_chunk and fr != current_frame
-    ]
-    if same_chunk_frames:
-        pos_chunk_id, pos_frame_id = random.choice(same_chunk_frames)
-    else:
-        diff_chunk_frames = [
+   
+    diff_chunk_frames = [
             (ch, fr) for ch, fr, _ in anchor_frames if ch != current_chunk
         ]
+    if diff_chunk_frames:
         pos_chunk_id, pos_frame_id = random.choice(diff_chunk_frames)
+    else:
+        same_chunk_frames = [
+            (ch, fr)
+            for ch, fr, _ in anchor_frames
+            if ch == current_chunk and fr != current_frame
+        ]
+        if same_chunk_frames:
+            pos_chunk_id, pos_frame_id = random.choice(same_chunk_frames)
+        else:
+            pos_chunk_id, pos_frame_id = None, None
 
     return pos_chunk_id, pos_frame_id
 
@@ -105,27 +109,11 @@ def build_pairs_for_video(input_file_path, output_file_path):
         header=0,
         names=["chunk_id", "speaker_id", "is_speaking", "timestamp", "frame_id"],
     )
+    df = df.loc[:, df.columns != 'timestamp'].astype(int)
 
     speaker_frames, chunk_speakers = create_lookups(df)
-
-    for anchor_speaker in speaker_frames:  # iterate through speakers
-        anchor_frames = speaker_frames[anchor_speaker]  # get frames for current speaker
-        # split anchor_frames into speaking/not speaking
-        print(anchor_speaker, anchor_frames)
-        anchor_speaking_frames = [
-            (ch, fr, is_speaking)
-            for (ch, fr, is_speaking) in anchor_frames
-            if is_speaking == 1
-        ]
-        anchor_non_speaking_frames = [
-            (ch, fr, is_speaking)
-            for (ch, fr, is_speaking) in anchor_frames
-            if is_speaking == 0
-        ]
-        print(anchor_speaking_frames)
-        print(anchor_non_speaking_frames)
-        # exit()
-        pair_info = {
+    # print(speaker_frames)
+    pair_info = {
             "chunk_id": [],
             "speaker_id": [],
             "is_speaking": [],
@@ -139,11 +127,30 @@ def build_pairs_for_video(input_file_path, output_file_path):
             "audio_flag": [],  # pair works for audio
         }
 
+    for anchor_speaker in speaker_frames:  # iterate through speakers
+        # print(anchor_speaker)
+        anchor_frames = speaker_frames[anchor_speaker]  # get frames for current speaker
+        # split anchor_frames into speaking/not speaking
+        # print(anchor_speaker, anchor_frames)
+        anchor_speaking_frames = [
+            (ch, fr, is_speaking)
+            for (ch, fr, is_speaking) in anchor_frames
+            if is_speaking == 1
+        ]
+        anchor_non_speaking_frames = [
+            (ch, fr, is_speaking)
+            for (ch, fr, is_speaking) in anchor_frames
+            if is_speaking == 0
+        ]
+        # print(anchor_speaking_frames)
+        # print(anchor_non_speaking_frames)
+        # exit()
+
         skipped_frames = (
             []
         )  # collect frames which are speaking but combined pair is not found
 
-        for current_frame, current_chunk, _ in anchor_speaking_frames:
+        for current_chunk, current_frame, _ in anchor_speaking_frames:
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_speaking_frames
             )  # get positive pair from speaking_frames only
@@ -152,7 +159,7 @@ def build_pairs_for_video(input_file_path, output_file_path):
                 current_chunk,
                 chunk_speakers,
                 AUDIO_SAMPLE_DIFFERENT_SPEAKER_PROB,
-            )  # to be implemented - get negative pair for different face, speaking vs not speaking depends on probability
+            )  # get negative pair for different face, speaking vs not speaking depends on probability
             if pos_chunk and neg_chunk:
                 pair_info["chunk_id"].append(current_chunk)
                 pair_info["speaker_id"].append(anchor_speaker)
@@ -171,7 +178,7 @@ def build_pairs_for_video(input_file_path, output_file_path):
 
         # visual only case
         video_only_frames = anchor_non_speaking_frames + skipped_frames
-        for current_frame, current_chunk, is_speaking in video_only_frames:
+        for current_chunk, current_frame, is_speaking in video_only_frames:
             # get positive pair from any anchor frame
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_frames
@@ -194,8 +201,8 @@ def build_pairs_for_video(input_file_path, output_file_path):
                 pair_info["video_flag"].append(1)
                 pair_info["audio_flag"].append(0)  # works for visual pairs only
 
-        save_pair_info(pair_info, output_file_path)
-        return pair_info
+    save_pair_info(pair_info, output_file_path)
+    return pair_info
 
 
 def save_pair_info(pair_info_dict, output_file_path):
@@ -203,4 +210,5 @@ def save_pair_info(pair_info_dict, output_file_path):
     if os.path.exists(output_file_path):
         current_pairs = pd.read_csv(output_file_path)
         pairs_df = current_pairs + pairs_df
+    # print(pairs_df)
     pairs_df.to_csv(output_file_path, index=False)
