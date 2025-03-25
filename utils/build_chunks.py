@@ -2,6 +2,7 @@ from .video import read_video, downsample_video, parse_bounding_boxes, extract_f
 from .audio import flatten_audio, transform_audio
 from .rttm import get_rttm_labels
 import os
+import pandas as pd
 import numpy as np
 MAX_CHUNKS = 100
 
@@ -18,6 +19,7 @@ def build_chunks(
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
    #parse_rttm outside loop
 #    chunks = []
+   all_speaking_dfs = []
    chunk_idx = chunk_idx_start
    for chunk in video_reader:
       chunk_idx+=1
@@ -39,8 +41,8 @@ def build_chunks(
             bounding_boxes=bounding_boxes
          )
       except:
-        #  raise ValueError(f"Error extracting faces for video {video_path}")
-        continue
+         continue
+    
       for speaker_id in faces:
          faces[speaker_id] = transform_video(
             video_frames=faces[speaker_id], height=img_height, width=img_width, scale=scale
@@ -48,7 +50,9 @@ def build_chunks(
       melspectrogram = transform_audio(audio_data) # (Frequencies, Time)
       speaker_ids = list(faces.keys())
       csv_path = os.path.join(chunk_dir, "is_speaking.csv")
+      
       is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids, csv_path=csv_path)
+      all_speaking_dfs.append(is_speaking)
       mel_file = os.path.join(chunk_dir, "melspectrogram.npy")
       np.save(mel_file, melspectrogram)
       for speaker_id, face_dict in faces.items():
@@ -56,6 +60,10 @@ def build_chunks(
             bbox_array = face_dict 
             bbox_file = os.path.join(chunk_dir, f"face_{speaker_id}.npy")
             np.save(bbox_file, bbox_array)
+      if all_speaking_dfs:
+        final_speaking_df = pd.concat(all_speaking_dfs, ignore_index=True)
+        final_csv_path = os.path.join(base_dir, "is_speaking.csv")
+        final_speaking_df.to_csv(final_csv_path, index=False)
       # Store chunk
     #   chunks.append((faces, melspectrogram, is_speaking))
    return chunk_idx

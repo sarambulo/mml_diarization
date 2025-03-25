@@ -37,46 +37,57 @@ def read_video(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch
 
    return generate_chunks(video_stream=stream, seconds=seconds)
 
-def generate_chunks(video_stream: VideoReader, seconds: int):
-   """
-   Generator that yields chunks of the specified length in seconds
-   """
-   start = 0
-   counter = 0
-   while True:
-      end = start + seconds
-      video_frames = []
-      timestamps = []
-      audio_frames = []
-      frame_ids = []
-      # Read video frames
-      video_stream.set_current_stream("video")
-      for frame in itertools.takewhile(
-         lambda x: x["pts"] <= end, video_stream
-      ):
-         video_frames.append(frame["data"])
-         timestamps.append(frame["pts"])
-         frame_ids.append(counter)
-         counter += 1
+def generate_chunks(video_stream: VideoReader, seconds: float):
+    """
+    Generator that yields consecutive chunks of 'seconds' duration
+    from the given video_stream. Each yield is:
+       (video_frames, audio_frames, timestamps, frame_ids)
+    where:
+      - video_frames: shape (T, C, H, W) as a torch.Tensor (if frames exist)
+      - audio_frames: shape (N, ...) as a torch.Tensor (depends on your audio shape)
+      - timestamps: 1D torch.Tensor of length T (frame timestamps in seconds)
+      - frame_ids: 1D torch.Tensor of length T (global frame indices)
+    """
 
-      # Read audio frames
-      video_stream.set_current_stream("audio")
-      for frame in itertools.takewhile(
-         lambda x: x["pts"] <= end, video_stream.seek(start)
-      ):
-         audio_frames.append(frame["data"])
+    start = 0.0      # where our current chunk begins
+    frame_counter = 0
+    while True:
+        end = start + seconds  # the end time for this chunk
 
-      if len(timestamps) > 0:
-         start = timestamps[-1]
-      else:
-         break
+        # Gather video frames
+        video_frames = []
+        video_timestamps = []
+        video_frame_ids = []
 
-      # Return types
-      video_frames = torch.stack(video_frames) if video_frames else video_frames
-      audio_frames = torch.stack(audio_frames) if audio_frames else audio_frames
-      timestamps = torch.tensor(timestamps)
-      frame_ids = torch.tensor(frame_ids)
-      yield video_frames, audio_frames, timestamps, frame_ids
+        video_stream.set_current_stream("video")
+        for frame in itertools.takewhile(lambda x: x["pts"] < end, video_stream.seek(start)):
+            video_frames.append(frame["data"])
+            video_timestamps.append(frame["pts"])
+            video_frame_ids.append(frame_counter)
+            frame_counter += 1
+
+        # Gather audio frames
+        # NOTE: In practice, you'd handle audio carefully to match the chunk boundaries.
+        audio_frames = []
+        video_stream.set_current_stream("audio")
+        for frame in itertools.takewhile(lambda x: x["pts"] < end, video_stream.seek(start)):
+            audio_frames.append(frame["data"])
+
+        # If we didn't get any video frames, we've likely reached the end
+        if not video_frames:
+            break
+
+        # Convert lists to tensors
+        video_frames = torch.stack(video_frames) if video_frames else torch.empty(0)
+        audio_frames = torch.stack(audio_frames) if audio_frames else torch.empty(0)
+        video_timestamps = torch.tensor(video_timestamps, dtype=torch.float32)
+        video_frame_ids = torch.tensor(video_frame_ids, dtype=torch.int64)
+
+        # Yield the current chunk
+        yield video_frames, audio_frames, video_timestamps, video_frame_ids
+
+        # Advance start time for the next chunk
+        start = end
 
 
 def downsample_video(video_frames: torch.Tensor, timestamps: torch.Tensor, frame_ids: torch.Tensor, factor: int = 5) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -128,7 +139,7 @@ def parse_bounding_boxes(
    # Return type
    bounding_boxes = {
       frame_id: {
-         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values.tolist()
+         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values.reshape(-1).tolist()
          for face_id in face_ids
       }
       for frame_id in frame_ids
@@ -138,7 +149,7 @@ def parse_bounding_boxes(
 
 def extract_faces(
       video_frames: torch.Tensor, frame_ids: torch.Tensor, bounding_boxes: List[Dict]
-   ) ->  Dict[int, torch.Tensor]:
+   ) ->  Dict[int, List[torch.Tensor]]:
    """
    Extract the faces identified by the provided bounding boxes
 
@@ -147,7 +158,7 @@ def extract_faces(
    :param bounding_boxes: List of length Frames with dictionaries. Each dictionary has
    the face ID as a key and the bounding box as the value
 
-   :return: A dictionary with face_ids as keys and extracted bounding boxes as values
+   :return: A dictionary with face_ids as keys and a list of extracted bounding boxes as values
    """
    if bounding_boxes is None:
       raise ValueError("bounding_boxes cannot be empty")
@@ -161,6 +172,8 @@ def extract_faces(
       for face_id in bounding_boxes_in_frame:
          # Crop face
          bounding_box = bounding_boxes_in_frame[face_id]
+         if not bounding_box:
+            continue # Some people are not in every frame
          x_start, x_end, y_start, y_end = bounding_box
          cropped_face = frame[:, y_start:y_end, x_start:x_end]
          # Store cropped face
@@ -168,14 +181,11 @@ def extract_faces(
             face_frames[face_id].append(cropped_face)
          else:
             face_frames[face_id] = [cropped_face]
-   # Return types
-   face_frames = {face_id: torch.stack(face_frames[face_id]) for face_id in face_frames}
-         
    return face_frames
        
 
 def transform_video(
-   video_frames: torch.Tensor, height: int = 112, width: int = 112, scale: int = True
+   video_frames: List[torch.Tensor], height: int = 112, width: int = 112, scale: int = True
 ) -> torch.Tensor:
    """
    Set all frames to the same size and data type, and scales the values to
@@ -193,5 +203,5 @@ def transform_video(
       ImageTransforms.ToDtype(torch.float32, scale=scale),
       ImageTransforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
    ])
-   video_frames = transformations(video_frames)
+   video_frames = torch.stack([transformations(frame) for frame in video_frames])
    return video_frames

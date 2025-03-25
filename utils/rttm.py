@@ -85,7 +85,7 @@ def get_rttm_labels(
 
     # 3) Convert to DataFrame
     df = pd.DataFrame(rows, columns=["face_id", "frame_id", "is_speaking"])
-
+    # print(df)
     # 4) Always write to CSV
     df.to_csv(csv_path, index=False)
 
