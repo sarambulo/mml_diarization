@@ -37,9 +37,9 @@ def test_downsample_video():
    return
 
 def test_parse_bounding_boxes():
-   bounding_boxes_path = './data_sample/msdwild_boundingbox_labels/00001.csv'
-   box_1_reference = {'frame_id': 0, 'face_id': 2, 'coords': [366, 442, 142, 253]}
-   box_2_reference = {'frame_id': 1, 'face_id': 0, 'coords': [725, 795, 181, 275]}
+   bounding_boxes_path = './data_sample/msdwild_boundingbox_labels/00004.csv'
+   box_1_reference = {'frame_id': 0, 'face_id': 0, 'coords': [725, 795, 181, 276]}
+   box_2_reference = {'frame_id': 1, 'face_id': 1, 'coords': [690, 804, 151, 276]}
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path=bounding_boxes_path)
    for reference in [box_1_reference, box_2_reference]:
       # Frame is present
@@ -51,6 +51,7 @@ def test_parse_bounding_boxes():
       assert face_id in bounding_boxes_in_frame
       # Coordinates match
       box_coords = bounding_boxes_in_frame[face_id]
+      assert isinstance(box_coords, list)
       assert (box_coords == reference['coords']).all()
    return
 

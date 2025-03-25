@@ -128,7 +128,7 @@ def parse_bounding_boxes(
    # Return type
    bounding_boxes = {
       frame_id: {
-         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values.tolist()
+         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values.reshape(-1).tolist()
          for face_id in face_ids
       }
       for frame_id in frame_ids
@@ -138,7 +138,7 @@ def parse_bounding_boxes(
 
 def extract_faces(
       video_frames: torch.Tensor, frame_ids: torch.Tensor, bounding_boxes: List[Dict]
-   ) ->  Dict[int, torch.Tensor]:
+   ) ->  Dict[int, List[torch.Tensor]]:
    """
    Extract the faces identified by the provided bounding boxes
 
@@ -147,7 +147,7 @@ def extract_faces(
    :param bounding_boxes: List of length Frames with dictionaries. Each dictionary has
    the face ID as a key and the bounding box as the value
 
-   :return: A dictionary with face_ids as keys and extracted bounding boxes as values
+   :return: A dictionary with face_ids as keys and a list of extracted bounding boxes as values
    """
    if bounding_boxes is None:
       raise ValueError("bounding_boxes cannot be empty")
@@ -161,6 +161,8 @@ def extract_faces(
       for face_id in bounding_boxes_in_frame:
          # Crop face
          bounding_box = bounding_boxes_in_frame[face_id]
+         if not bounding_box:
+            continue # Some people are not in every frame
          x_start, x_end, y_start, y_end = bounding_box
          cropped_face = frame[:, y_start:y_end, x_start:x_end]
          # Store cropped face
@@ -168,14 +170,11 @@ def extract_faces(
             face_frames[face_id].append(cropped_face)
          else:
             face_frames[face_id] = [cropped_face]
-   # Return types
-   face_frames = {face_id: torch.stack(face_frames[face_id]) for face_id in face_frames}
-         
    return face_frames
        
 
 def transform_video(
-   video_frames: torch.Tensor, height: int = 112, width: int = 112, scale: int = True
+   video_frames: List[torch.Tensor], height: int = 112, width: int = 112, scale: int = True
 ) -> torch.Tensor:
    """
    Set all frames to the same size and data type, and scales the values to
@@ -193,5 +192,5 @@ def transform_video(
       ImageTransforms.ToDtype(torch.float32, scale=scale),
       ImageTransforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
    ])
-   video_frames = transformations(video_frames)
+   video_frames = torch.stack([transformations(frame) for frame in video_frames])
    return video_frames

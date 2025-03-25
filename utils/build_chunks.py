@@ -33,10 +33,13 @@ def build_chunks(
          video_frames=video_data, timestamps=timestamps,
          frame_ids=frame_ids, factor=downsampling_factor
       )
-      faces = extract_faces(
-         video_frames=video_data, frame_ids=frame_ids,
-         bounding_boxes=bounding_boxes
-      )
+      try:
+         faces = extract_faces(
+            video_frames=video_data, frame_ids=frame_ids,
+            bounding_boxes=bounding_boxes
+         )
+      except:
+         raise ValueError(f"Error extracting faces for video {video_path}")
       for speaker_id in faces:
          faces[speaker_id] = transform_video(
             video_frames=faces[speaker_id], height=img_height, width=img_width, scale=scale
