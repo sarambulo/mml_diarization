@@ -37,14 +37,14 @@ def get_rttm_labels(
     """
    
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-
+    speakers= [str(x) for x in speaker_ids]
     
     intervals = {}
     with open(rttm_path, "r") as f:
         for line in f:
             parts = line.strip().split()
             # Skip lines that don't start with 'SPEAKER' or aren't long enough
-            if len(parts) < 8 or parts[0] != "SPEAKER":
+            if parts[0] != "SPEAKER":
                 continue
 
             # parts layout:
@@ -60,8 +60,10 @@ def get_rttm_labels(
             #  9: <NA>
             rttm_speaker_id = parts[7]
             start_time = float(parts[3])
+            # print(start_time)
             duration = float(parts[4])
             end_time = start_time + duration
+            # print(end_time)
 
             if rttm_speaker_id not in intervals:
                 intervals[rttm_speaker_id] = []
@@ -70,9 +72,11 @@ def get_rttm_labels(
     # 2) For each frame time, determine if each speaker_id is speaking
     rows = []
     for frame_id, t in enumerate(timestamps):
-        for face_id in speaker_ids:
+        for face_id in speakers:
+            # print(speakers)
             speaking_flag = False
             if face_id in intervals:
+                # print("REACH")
                 for (start, end) in intervals[face_id]:
                     if start <= t < end:
                         speaking_flag = True

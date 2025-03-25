@@ -39,7 +39,8 @@ def build_chunks(
             bounding_boxes=bounding_boxes
          )
       except:
-         raise ValueError(f"Error extracting faces for video {video_path}")
+        #  raise ValueError(f"Error extracting faces for video {video_path}")
+        continue
       for speaker_id in faces:
          faces[speaker_id] = transform_video(
             video_frames=faces[speaker_id], height=img_height, width=img_width, scale=scale
