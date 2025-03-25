@@ -101,11 +101,11 @@ def get_combined_negative_pair(
 
 # INPUT: is_speaking.csv
 # output: pairs.csv with 7 new columns:  PosChunkID, PosFrameID, NegChunkID, NegFrameID, NegSpeakerID, Video_Flag, Audio_Flag
-def build_pairs_for_video(input_file_path, output_file_path):
+def choose_and_save_pairs_for_video(input_file_path, output_file_path):
     df = pd.read_csv(
         input_file_path,
         header=0,
-        names=["chunk_id", "speaker_id", "is_speaking", "timestamp", "frame_id"],
+        names=["chunk_id", "speaker_id", "is_speaking", "frame_id"],
     )
     df = df.loc[:, df.columns != "timestamp"].astype(int)
 
@@ -149,7 +149,9 @@ def build_pairs_for_video(input_file_path, output_file_path):
         )  # collect frames which are speaking but combined pair is not found
 
         for current_chunk, current_frame, _ in anchor_speaking_frames:
-            print(f"Pairing chunk {current_chunk} frame {current_frame}")
+            print(
+                f"Pairing chunk {current_chunk} frame {current_frame} speaker {anchor_speaker}"
+            )
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_speaking_frames
             )  # get positive pair from speaking_frames only
@@ -171,10 +173,8 @@ def build_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_frame_id"].append(neg_frame)
                 pair_info["video_flag"].append(1)
                 pair_info["audio_flag"].append(1)
-                print("Combined Pair:", current_chunk, current_frame, anchor_speaker)
-
             else:
-                skipped_frames.append((current_frame, current_chunk, 1))
+                skipped_frames.append((current_chunk, current_frame, 1))
 
         # visual only case
         video_only_frames = anchor_non_speaking_frames + skipped_frames
@@ -201,7 +201,10 @@ def build_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_frame_id"].append(neg_frame)
                 pair_info["video_flag"].append(1)
                 pair_info["audio_flag"].append(0)  # works for visual pairs only
-                print("Visual Pair:", current_chunk, current_frame, anchor_speaker)
+            else:
+                print(
+                    f"No pair found: Pos Found = {pos_chunk!=None} Neg Found = {neg_chunk!=None}"
+                )
     save_pair_info(pair_info, output_file_path)
     return pair_info
 
