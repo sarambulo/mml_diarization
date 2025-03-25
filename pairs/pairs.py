@@ -92,7 +92,7 @@ def get_combined_negative_pair(
                 if spk != anchor_speaker_id and is_speaking == is_speaking_val
             ]
             if other_speaker_frames:
-                neg_face_id, neg_frame_id = random.choice(other_speaker_frames)
+                neg_face_id, neg_frame_id, _ = random.choice(other_speaker_frames)
                 return chunk_id, neg_face_id, neg_frame_id
     return None
 
