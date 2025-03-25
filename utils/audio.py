@@ -49,9 +49,13 @@ def flatten_audio(audio_data: np.ndarray) -> np.ndarray:
     """
     # If audio has more than one dimension (e.g., [channels, samples]),
     # average across channels to get a single channel.
+   if isinstance(audio_data, torch.Tensor):
+        audio_data = audio_data.detach().cpu().numpy()
+
    if audio_data.ndim > 1:
         audio_data = np.mean(audio_data, axis=0)
-   return audio_data 
+   return audio_data
+
 
 def transform_audio(
     audio_data: np.ndarray,
