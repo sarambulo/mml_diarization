@@ -1,7 +1,7 @@
 import argparse
 import glob
 import os
-from .build_chunks import build_chunks
+from utils.build_chunks import build_chunks
 
 def main():
     parser = argparse.ArgumentParser(description="Create chunks from all .mp4 videos in a directory.")
@@ -11,16 +11,14 @@ def main():
                         help="Path to RTTM file.")
     parser.add_argument("--seconds", type=int, default=3,
                         help="Duration of each chunk in seconds.")
-    parser.add_argument("--downsampling_factor", type=int, default=5,
+    parser.add_argument("--downsampling_factor", type=int, default=8,
                         help="Factor by which to downsample frames.")
     parser.add_argument("--img_height", type=int, default=112,
                         help="Desired height of output frames.")
     parser.add_argument("--img_width", type=int, default=112,
                         help="Desired width of output frames.")
-    parser.add_argument("--no_scale", dest="scale", action="store_false",
+    parser.add_argument("--scale", type=bool, default=True,
                         help="Disable scaling of pixel values.")
-    parser.set_defaults(scale=True)
-
     args = parser.parse_args()
 
     video_files = sorted(glob.glob(os.path.join(args.data_dir, "*.mp4")))
