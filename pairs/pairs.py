@@ -25,10 +25,8 @@ def create_lookups(df):
 
 
 def get_positive_pair(current_chunk, current_frame, anchor_frames):
-   
-    diff_chunk_frames = [
-            (ch, fr) for ch, fr, _ in anchor_frames if ch != current_chunk
-        ]
+
+    diff_chunk_frames = [(ch, fr) for ch, fr, _ in anchor_frames if ch != current_chunk]
     if diff_chunk_frames:
         pos_chunk_id, pos_frame_id = random.choice(diff_chunk_frames)
     else:
@@ -109,23 +107,23 @@ def build_pairs_for_video(input_file_path, output_file_path):
         header=0,
         names=["chunk_id", "speaker_id", "is_speaking", "timestamp", "frame_id"],
     )
-    df = df.loc[:, df.columns != 'timestamp'].astype(int)
+    df = df.loc[:, df.columns != "timestamp"].astype(int)
 
     speaker_frames, chunk_speakers = create_lookups(df)
     # print(speaker_frames)
     pair_info = {
-            "chunk_id": [],
-            "speaker_id": [],
-            "is_speaking": [],
-            "frame_id": [],
-            "pos_chunk_id": [],
-            "pos_frame_id": [],
-            "neg_chunk_id": [],
-            "neg_speaker_id": [],
-            "neg_frame_id": [],
-            "video_flag": [],  # pair works for video
-            "audio_flag": [],  # pair works for audio
-        }
+        "chunk_id": [],
+        "speaker_id": [],
+        "is_speaking": [],
+        "frame_id": [],
+        "pos_chunk_id": [],
+        "pos_frame_id": [],
+        "neg_chunk_id": [],
+        "neg_speaker_id": [],
+        "neg_frame_id": [],
+        "video_flag": [],  # pair works for video
+        "audio_flag": [],  # pair works for audio
+    }
 
     for anchor_speaker in speaker_frames:  # iterate through speakers
         # print(anchor_speaker)
@@ -151,6 +149,7 @@ def build_pairs_for_video(input_file_path, output_file_path):
         )  # collect frames which are speaking but combined pair is not found
 
         for current_chunk, current_frame, _ in anchor_speaking_frames:
+            print(f"Pairing chunk {current_chunk} frame {current_frame}")
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_speaking_frames
             )  # get positive pair from speaking_frames only
@@ -172,6 +171,7 @@ def build_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_frame_id"].append(neg_frame)
                 pair_info["video_flag"].append(1)
                 pair_info["audio_flag"].append(1)
+                print("Combined Pair:", current_chunk, current_frame, anchor_speaker)
 
             else:
                 skipped_frames.append((current_frame, current_chunk, 1))
@@ -179,6 +179,7 @@ def build_pairs_for_video(input_file_path, output_file_path):
         # visual only case
         video_only_frames = anchor_non_speaking_frames + skipped_frames
         for current_chunk, current_frame, is_speaking in video_only_frames:
+            print(f"Video only pairing chunk {current_chunk} frame {current_frame}")
             # get positive pair from any anchor frame
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_frames
@@ -200,7 +201,7 @@ def build_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_frame_id"].append(neg_frame)
                 pair_info["video_flag"].append(1)
                 pair_info["audio_flag"].append(0)  # works for visual pairs only
-
+                print("Visual Pair:", current_chunk, current_frame, anchor_speaker)
     save_pair_info(pair_info, output_file_path)
     return pair_info
 
