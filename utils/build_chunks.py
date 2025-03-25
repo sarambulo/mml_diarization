@@ -52,6 +52,7 @@ def build_chunks(
       csv_path = os.path.join(chunk_dir, "is_speaking.csv")
       
       is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids, csv_path=csv_path)
+      is_speaking["chunk_id"] = chunk_idx
       all_speaking_dfs.append(is_speaking)
       mel_file = os.path.join(chunk_dir, "melspectrogram.npy")
       np.save(mel_file, melspectrogram)
