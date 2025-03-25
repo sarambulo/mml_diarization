@@ -1,7 +1,13 @@
 from typing import Dict, Tuple, List
 import torch
+from pathlib import Path
+from torchvision.io import VideoReader
+import itertools
+import pandas as pd
+import numpy as np
+import torchvision.transforms.v2 as ImageTransforms
 
-def read_video(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def read_video(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
    """
    Reads a video file and returns video data, audio data, and timestamps.
 
@@ -15,7 +21,63 @@ def read_video(video_path: str, seconds: float = 3) -> Tuple[torch.Tensor, torch
       - timestamps (torch.Tensor): Shape (Frames,)
       - frame_ids  (torch.Tensor): Shape (Frames,)
    """
-   return
+   # Check inputs
+   if seconds <= 0:
+      raise ValueError("seconds should be >0")
+   
+   if not Path(video_path).exists():
+      raise FileExistsError(
+         f"file {video_path} not found"
+      )
+   video_path = str(video_path)
+
+   # Create a stream to read the video
+   stream_type = "video"
+   stream = VideoReader(video_path, stream=stream_type)
+
+   return generate_chunks(video_stream=stream, seconds=seconds)
+
+def generate_chunks(video_stream: VideoReader, seconds: int):
+   """
+   Generator that yields chunks of the specified length in seconds
+   """
+   start = 0
+   counter = 0
+   while True:
+      end = start + seconds
+      video_frames = []
+      timestamps = []
+      audio_frames = []
+      frame_ids = []
+      # Read video frames
+      video_stream.set_current_stream("video")
+      for frame in itertools.takewhile(
+         lambda x: x["pts"] <= end, video_stream
+      ):
+         video_frames.append(frame["data"])
+         timestamps.append(frame["pts"])
+         frame_ids.append(counter)
+         counter += 1
+
+      # Read audio frames
+      video_stream.set_current_stream("audio")
+      for frame in itertools.takewhile(
+         lambda x: x["pts"] <= end, video_stream.seek(start)
+      ):
+         audio_frames.append(frame["data"])
+
+      if len(timestamps) > 0:
+         start = timestamps[-1]
+      else:
+         break
+
+      # Return types
+      video_frames = torch.stack(video_frames) if video_frames else video_frames
+      audio_frames = torch.stack(audio_frames) if audio_frames else audio_frames
+      timestamps = torch.tensor(timestamps)
+      frame_ids = torch.tensor(frame_ids)
+      yield video_frames, audio_frames, timestamps, frame_ids
+
 
 def downsample_video(video_frames: torch.Tensor, timestamps: torch.Tensor, frame_ids: torch.Tensor, factor: int = 5) -> Tuple[torch.Tensor, torch.Tensor]:
    """
@@ -30,19 +92,52 @@ def downsample_video(video_frames: torch.Tensor, timestamps: torch.Tensor, frame
       - timestamps (torch.Tensor): Shape (ceil(Frames / factor),)
       - frame_ids  (torch.Tensor): Shape (ceil(Frames / factor),)
    """
-   return
+   video_data = video_frames[::factor]
+   timestamps = timestamps[::factor]
+   frame_ids = frame_ids[::factor]
+   return video_data, timestamps, frame_ids
 
 def parse_bounding_boxes(
       bounding_boxes_path: str
-   ) -> List[Dict]:
+   ) -> Dict[int, Dict[int, Dict]]:
    """
-   Read the file with the bounding boxes and return a list of length `Frames` with
-   dictionaries with the face_ids as keys and the bounding boxes coordinates as values
+   Read the file with the bounding boxes and return a nested dictionary with frame_id as first level keys,
+   face_ids as second level keys and bounding boxes coordinates as values
    """
-   return
+   if not Path(bounding_boxes_path).exists():
+      raise FileExistsError(f"Bounding boxes file {bounding_boxes_path} not found")
+   # Read CSV with no headers (ensure all rows are treated as data)
+   df = pd.read_csv(bounding_boxes_path, header=None)
+
+   # Manually assign column names
+   df.columns = ["frame_id", "face", "face_id", "x_start", "y_start", "x_end", "y_end", "fixed"]
+
+   # Clean data
+   cols_to_keep = ["frame_id", "face_id", "x_start", "x_end", "y_start", "y_end"]
+   df = df.loc[:, cols_to_keep]
+   df = df.astype(int)
+   coord_cols = cols_to_keep[-4:]
+   df.loc[:, coord_cols] = np.where(df.loc[:, coord_cols] >= 0, df.loc[:, coord_cols], 0)
+   valid_rows = ((df.loc[:, 'x_start'] <= df.loc[:, 'x_end']) & (df.loc[:, 'y_start'] <= df.loc[:, 'y_end']))
+   df = df.loc[valid_rows, :]
+
+   # Indices
+   frame_ids = df.loc[:, 'frame_id'].unique()
+   face_ids = df.loc[:, 'face_id'].unique()
+   
+   # Return type
+   bounding_boxes = {
+      frame_id: {
+         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values
+         for face_id in face_ids
+      }
+      for frame_id in frame_ids
+   }
+
+   return bounding_boxes
 
 def extract_faces(
-      video_frames: torch.Tensor, frame_ids: torch.Tensor, bounding_boxes: torch.Tensor
+      video_frames: torch.Tensor, frame_ids: torch.Tensor, bounding_boxes: List[Dict]
    ) ->  Tuple[torch.Tensor, torch.Tensor]:
    """
    Extract the faces identified by the provided bounding boxes
@@ -54,7 +149,30 @@ def extract_faces(
 
    :return: A dictionary with face_ids as keys and extracted bounding boxes as values
    """
-   return
+   if bounding_boxes is None:
+      raise ValueError("bounding_boxes cannot be empty")
+   
+   face_frames = {}
+   for i, frame_id in enumerate(frame_ids):
+      # video_frames and frame_ids are already downsampled so we cannot use
+      # the frame_ids to index into video_frames by position
+      frame = video_frames[i]
+      bounding_boxes_in_frame = bounding_boxes[frame_id.item()]
+      for face_id in bounding_boxes_in_frame:
+         # Crop face
+         bounding_box = bounding_boxes_in_frame[face_id]
+         x_start, x_end, y_start, y_end = bounding_box
+         cropped_face = frame[:, y_start:y_end, x_start:x_end]
+         # Store cropped face
+         if face_id in face_frames:
+            face_frames[face_id].append(cropped_face)
+         else:
+            face_frames[face_id] = [cropped_face]
+   # Return types
+   face_frames = {face_id: torch.stack(face_frames[face_id]) for face_id in face_frames}
+         
+   return face_frames
+       
 
 def transform_video(
    video_frames: torch.Tensor, height: int = 112, width: int = 112, scale: int = True
@@ -70,4 +188,10 @@ def transform_video(
 
    :return: Transformed video frames
    """
-   return
+   transformations = ImageTransforms.Compose([
+      ImageTransforms.Resize((height, width)),
+      ImageTransforms.ToDtype(torch.float32, scale=scale),
+      ImageTransforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+   ])
+   video_frames = transformations(video_frames)
+   return video_frames
