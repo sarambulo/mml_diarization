@@ -1,6 +1,5 @@
-INPUT_DIR = ""
-OUTPUT_DIR = ""
-
+INPUT_DIR = "data/test/videos"
+OUTPUT_DIR = "data/test/pairs"
 
 AUDIO_FRAME_LENGTH_SECS = 0.2
 AUDIO_SAMPLE_DIFFERENT_SPEAKER_PROB = 0.7
