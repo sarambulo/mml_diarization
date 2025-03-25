@@ -128,7 +128,7 @@ def parse_bounding_boxes(
    # Return type
    bounding_boxes = {
       frame_id: {
-         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values
+         face_id: df.loc[(df['frame_id'] == frame_id) & (df['face_id'] == face_id), coord_cols].values.tolist()
          for face_id in face_ids
       }
       for frame_id in frame_ids
@@ -138,7 +138,7 @@ def parse_bounding_boxes(
 
 def extract_faces(
       video_frames: torch.Tensor, frame_ids: torch.Tensor, bounding_boxes: List[Dict]
-   ) ->  Tuple[torch.Tensor, torch.Tensor]:
+   ) ->  Dict[int, torch.Tensor]:
    """
    Extract the faces identified by the provided bounding boxes
 
