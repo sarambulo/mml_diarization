@@ -63,7 +63,7 @@ def transform_audio(
     sr: int,
     n_bands: int,
     n_fft=1024,
-    hop_length=256,
+    hop_length=512,
 ) -> np.ndarray:
     """
     Transforms audio into a log-mel spectrogram using librosa.
