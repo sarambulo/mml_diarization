@@ -16,8 +16,10 @@ def create_numbered_file(dir, base_name, extension):
 
 def get_speaking_csv_files(directory):
     csv_files = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith("is_speaking.csv"):
-                csv_files.append(root, file)
+    for root, dirs, files in os.walk(directory):
+        # Check if the current directory is exactly one level below the root
+        if root.count(os.sep) - directory.count(os.sep) == 1:
+            for file in files:
+                if file == "is_speaking.csv":
+                    csv_files.append((root, file))
     return csv_files

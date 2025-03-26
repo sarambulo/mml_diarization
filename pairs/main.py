@@ -7,10 +7,9 @@ from audio import build_audio_pairs
 from config import *
 
 
-def create_pairs(input_dir: str, output_dir: str) -> None:
-    os.makedirs(output_dir, exist_ok=True)
+def create_pairs(input_dir: str) -> None:
     for video_dir, speaking_filename in get_speaking_csv_files(input_dir):
-        pairs_filename = create_numbered_file(video_dir, "pairs", "csv")
+        pairs_filename = "pairs.csv"  # create_numbered_file(video_dir, "pairs", "csv")
         pairs_csv_path = os.path.join(video_dir, pairs_filename)
         speaking_csv_path = os.path.join(video_dir, speaking_filename)
         choose_and_save_pairs_for_video(speaking_csv_path, pairs_csv_path)
@@ -20,4 +19,4 @@ def create_pairs(input_dir: str, output_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    create_pairs(INPUT_DIR, OUTPUT_DIR)
+    create_pairs(INPUT_DIR)
