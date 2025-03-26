@@ -1,36 +1,39 @@
+from typing import List, Tuple
 from .video import read_video, downsample_video, parse_bounding_boxes, extract_faces, transform_video
 from .audio import flatten_audio, transform_audio
 from .rttm import get_rttm_labels
-import os
-import pandas as pd
-import numpy as np
-MAX_CHUNKS = 100
 
 def build_chunks(
       video_path: str, bounding_boxes_path: str, rttm_path: str, seconds: int = 3,
-      downsampling_factor: int = 5, img_height: int = 112, img_width: int = 112, scale: bool = True, chunk_idx_start: int = 0
-   ) -> None:
+      downsampling_factor: int = 5, img_height: int = 112, img_width: int = 112, scale: bool = True,
+      max_chunks: int = 60
+   ) -> List[Tuple]:
+   """
+   Returns a list of chunks. Each chunk is a tuple of three elements:
+   - Faces: dictionary with face IDs as keys and sequences of cropped faces as values
+   - Melspectrogram
+   - Is Speaking: pd.DataFrame with cols "face_id", "frame_id", "is_speaking"
+   """
 
-   video_name = os.path.splitext(os.path.basename(video_path))[0]
-   base_dir = os.path.join("preprocessed", video_name)
-   os.makedirs(base_dir, exist_ok=True)
    # Get video reader (generator)
-   video_reader = read_video(video_path=video_path, seconds=seconds)
+   video_reader, metadata = read_video(video_path=video_path, seconds=seconds)
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
-   #parse_rttm outside loop
-#    chunks = []
-   all_speaking_dfs = []
-   chunk_idx = chunk_idx_start
-   for chunk in video_reader:
-      chunk_idx+=1
-      if chunk_idx - chunk_idx_start > MAX_CHUNKS:
-        break
 
-      chunk_dir = os.path.join(base_dir, f"Chunk_{chunk_idx}")
-      os.makedirs(chunk_dir, exist_ok=True)
+   chunks = []
+   for i, chunk in enumerate(video_reader):
+      # Stop after max_chunks
+      if i >= max_chunks:
+         break
 
-      video_data, audio_data, timestamps, frame_ids=chunk
-      audio_data = flatten_audio(audio_data)
+      video_data, audio_data, timestamps, frame_ids = chunk
+
+      # Audio
+      audio_data = flatten_audio(audio_data) # (N, C)
+      melspectrogram = transform_audio(
+         audio_data, output_type='mfcc', sr=metadata['sampling_rate'], n_bands=30
+      ) # (Frequencies, Time)
+
+      # Video
       video_data, timestamps, frame_ids = downsample_video(
          video_frames=video_data, timestamps=timestamps,
          frame_ids=frame_ids, factor=downsampling_factor
@@ -41,30 +44,15 @@ def build_chunks(
             bounding_boxes=bounding_boxes
          )
       except:
-         continue
-    
+         raise ValueError(f'Failed extracting faces for video {video_path}')
       for speaker_id in faces:
          faces[speaker_id] = transform_video(
             video_frames=faces[speaker_id], height=img_height, width=img_width, scale=scale
          )
-      melspectrogram = transform_audio(audio_data) # (Frequencies, Time)
+
+      # Labels
       speaker_ids = list(faces.keys())
-      csv_path = os.path.join(chunk_dir, "is_speaking.csv")
-      
-      is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids, csv_path=csv_path)
-      is_speaking["chunk_id"] = chunk_idx
-      all_speaking_dfs.append(is_speaking)
-      mel_file = os.path.join(chunk_dir, "melspectrogram.npy")
-      np.save(mel_file, melspectrogram)
-      for speaker_id, face_dict in faces.items():
-            # Bounding boxes
-            bbox_array = face_dict 
-            bbox_file = os.path.join(chunk_dir, f"face_{speaker_id}.npy")
-            np.save(bbox_file, bbox_array)
-      if all_speaking_dfs:
-        final_speaking_df = pd.concat(all_speaking_dfs, ignore_index=True)
-        final_csv_path = os.path.join(base_dir, "is_speaking.csv")
-        final_speaking_df.to_csv(final_csv_path, index=False)
-      # Store chunk
-    #   chunks.append((faces, melspectrogram, is_speaking))
-   return chunk_idx
+      is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids)
+   
+      chunks.append((faces, melspectrogram, is_speaking))
+   return chunks

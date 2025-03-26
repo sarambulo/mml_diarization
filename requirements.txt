@@ -171,3 +171,4 @@ wandb==0.19.8
 wcwidth
 yarl==1.18.3
 zipp
+pytest

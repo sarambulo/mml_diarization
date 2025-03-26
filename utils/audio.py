@@ -59,24 +59,36 @@ def flatten_audio(audio_data: np.ndarray) -> np.ndarray:
 
 def transform_audio(
     audio_data: np.ndarray,
-    sr: int = 16000,
-    n_mels: int = 128,
-    fmax: int = 8000
+    output_type: str,
+    sr: int,
+    n_bands: int,
+    n_fft=1024,
+    hop_length=256,
 ) -> np.ndarray:
     """
     Transforms audio into a log-mel spectrogram using librosa.
     
     Parameters:
         audio_data (np.ndarray): Mono audio data (1D array).
+        output_type (str): mfcc or melspectrogram
         sr (int): Sampling rate of the audio. Default is 16k.
-        n_mels (int): Number of Mel bands to generate.
+        n_bands (int): Number of output bands to generate.
         fmax (int): Maximum frequency when converting to Mel scale. Typically sr/2.
 
     Returns:
         np.ndarray: The log-mel spectrogram of shape (n_mels, time_frames).
     """
-
-    mel_spec = librosa.feature.melspectrogram(y=audio_data, sr=sr, n_mels=n_mels, fmax=fmax)
-    mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
-
-    return mel_spec_db
+    audio_data = audio_data.transpose(1, 0) # Put the channel first
+    if output_type == 'mfcc':
+        mfcc = librosa.feature.mfcc(
+            y=audio_data, sr=sr, n_mfcc=n_bands, n_fft=n_fft, hop_length=hop_length
+        )
+        return mfcc
+    elif output_type == 'melspectrogram':
+        mel_spec = librosa.feature.melspectrogram(
+            y=audio_data, sr=sr, n_mels=n_bands, n_fft=n_fft, hop_length=hop_length
+        )
+        mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
+        return mel_spec_db
+    else:
+        raise ValueError(f'Invalid output type')

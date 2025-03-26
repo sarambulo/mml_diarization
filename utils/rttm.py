@@ -4,8 +4,7 @@ import pandas as pd
 def get_rttm_labels(
     rttm_path: str,
     timestamps: list,
-    speaker_ids: list,
-    csv_path: str
+    speaker_ids: list
 ):
     """
     Parse an RTTM file in the format:
@@ -35,8 +34,7 @@ def get_rttm_labels(
     pd.DataFrame
         DataFrame with columns ["face_id", "frame_id", "is_speaking"].
     """
-   
-    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+
     speakers= [str(x) for x in speaker_ids]
     
     intervals = {}
@@ -86,7 +84,5 @@ def get_rttm_labels(
     # 3) Convert to DataFrame
     df = pd.DataFrame(rows, columns=["face_id", "frame_id", "is_speaking"])
     # print(df)
-    # 4) Always write to CSV
-    df.to_csv(csv_path, index=False)
 
     return df

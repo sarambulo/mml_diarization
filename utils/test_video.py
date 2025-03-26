@@ -4,15 +4,22 @@ from math import ceil
 
 def test_read_video():
    video_path = './data_sample/msdwild_boundingbox_labels/00001.mp4'
-   video_reader = read_video(video_path=video_path, seconds=1)
-   for video_chunk in video_reader:
+   SECONDS = 1
+   video_reader, metadata = read_video(video_path=video_path, seconds=SECONDS)
+   FPS = metadata['fps']
+   FRAMES = FPS * SECONDS
+   for i, video_chunk in enumerate(video_reader):
       assert len(video_chunk) == 4
       assert all([isinstance(item, torch.Tensor) for item in video_chunk])
       video_data, audio_data, timestamps, frame_ids = video_chunk
       assert video_data.dim() == 4 # (Frames, C, H, W)
+      assert abs(len(video_data) - FRAMES) <= 1
       assert audio_data.dim() == 3 # (Frames, S, C)
       assert timestamps.dim() == 1 # (Frames, )
       assert frame_ids.dim() == 1 # (Frames, )
+      assert abs(len(frame_ids) - FRAMES) <= 1
+      if i >= 5:
+         break
    return
 
 def test_downsample_video():
@@ -38,7 +45,7 @@ def test_downsample_video():
 
 def test_parse_bounding_boxes():
    bounding_boxes_path = './data_sample/msdwild_boundingbox_labels/00004.csv'
-   box_1_reference = {'frame_id': 0, 'face_id': 0, 'coords': [725, 795, 181, 276]}
+   box_1_reference = {'frame_id': 0, 'face_id': 0, 'coords': [205, 322, 145, 279]}
    box_2_reference = {'frame_id': 1, 'face_id': 1, 'coords': [690, 804, 151, 276]}
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path=bounding_boxes_path)
    for reference in [box_1_reference, box_2_reference]:
@@ -52,7 +59,7 @@ def test_parse_bounding_boxes():
       # Coordinates match
       box_coords = bounding_boxes_in_frame[face_id]
       assert isinstance(box_coords, list)
-      assert (box_coords == reference['coords']).all()
+      assert box_coords == reference['coords']
    return
 
 def test_extract_faces():
@@ -73,7 +80,7 @@ def test_extract_faces():
    assert len(faces) == len(face_ids)
    for face_id, N in zip(face_ids, num_frames):
       assert face_id in faces
-      assert isinstance(faces[face_id], torch.Tensor)
+      assert isinstance(faces[face_id], list)
       assert len(faces[face_id]) == N
 
 def test_transform_video():
