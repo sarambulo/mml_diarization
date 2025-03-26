@@ -49,11 +49,11 @@ def flatten_audio(audio_data: np.ndarray) -> np.ndarray:
     """
     # If audio has more than one dimension (e.g., [channels, samples]),
     # average across channels to get a single channel.
-   if isinstance(audio_data, torch.Tensor):
-        audio_data = audio_data.detach().cpu().numpy()
-
-   if audio_data.ndim > 1:
-        audio_data = np.mean(audio_data, axis=0)
+#    if isinstance(audio_data, torch.Tensor):
+#         audio_data = audio_data.detach().cpu().numpy()
+   audio_shape=audio_data.shape
+#    print(audio_shape)
+   audio_data=audio_data.reshape((-1,audio_shape[-1])) 
    return audio_data
 
 
@@ -71,15 +71,18 @@ def transform_audio(
     Parameters:
         audio_data (np.ndarray): Mono audio data (1D array).
         output_type (str): mfcc or melspectrogram
-        sr (int): Sampling rate of the audio. Default is 16k.
-        n_bands (int): Number of output bands to generate.
+        sr (int): Sampling rate of the audio. Approx 44k.
+        n_bands (int): Number of output bands to generate ~30
         fmax (int): Maximum frequency when converting to Mel scale. Typically sr/2.
 
     Returns:
-        np.ndarray: The log-mel spectrogram of shape (n_mels, time_frames).
+        np.ndarray: The log-mel spectrogram of shape (n_mels, time_frames= approx 10ms).
     """
     audio_data = audio_data.transpose(1, 0) # Put the channel first
     if output_type == 'mfcc':
+        audio_data = audio_data.detach().cpu().numpy()
+        if audio_data.ndim > 1:
+            audio_data = np.mean(audio_data, axis=0)
         mfcc = librosa.feature.mfcc(
             y=audio_data, sr=sr, n_mfcc=n_bands, n_fft=n_fft, hop_length=hop_length
         )

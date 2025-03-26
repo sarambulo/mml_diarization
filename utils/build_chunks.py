@@ -18,7 +18,6 @@ def build_chunks(
    # Get video reader (generator)
    video_reader, metadata = read_video(video_path=video_path, seconds=seconds)
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
-
    chunks = []
    for i, chunk in enumerate(video_reader):
       # Stop after max_chunks
@@ -53,6 +52,5 @@ def build_chunks(
       # Labels
       speaker_ids = list(faces.keys())
       is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids)
-   
       chunks.append((faces, melspectrogram, is_speaking))
    return chunks
