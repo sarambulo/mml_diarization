@@ -27,7 +27,7 @@ def get_speaking_csv_files(directory):
 
 
 def visualize_mel_spectrogram(mel, output_dir):
-    print(mel.shape)
+    print(output_dir, mel.shape)
     plt.figure(figsize=(10, 6))
     plt.imshow(mel, aspect="auto", origin="lower", cmap="viridis")
     plt.colorbar(label="Amplitude")

@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+from config import VIDEO_FPS
 
 
 def build_visual_pairs(dir, pairs_path):
@@ -25,7 +26,7 @@ def build_visual_pairs(dir, pairs_path):
             video_flag,
             audio_flag,
         ) = row.values
-        if video_flag == 1 and frame_id % 4 == 0:
+        if video_flag == 1 and frame_id % VIDEO_FPS == 0:
             pos_path = os.path.join(
                 dir, f"Chunk_{pos_chunk_id}", f"face_{speaker_id}.npy"
             )

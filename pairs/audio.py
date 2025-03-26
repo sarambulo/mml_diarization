@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 from utils import visualize_mel_spectrogram
+from config import VIDEO_FPS
 
 
 def build_audio_pairs(dir, pairs_path):
@@ -25,7 +26,7 @@ def build_audio_pairs(dir, pairs_path):
             video_flag,
             audio_flag,
         ) = row.values
-        if audio_flag == 1 and frame_id % 4 == 0:
+        if audio_flag == 1 and frame_id % VIDEO_FPS == 0:
             pos_path = os.path.join(dir, f"Chunk_{pos_chunk_id}", "melspectrogram.npy")
             neg_path = os.path.join(dir, f"Chunk_{neg_chunk_id}", "melspectrogram.npy")
 
@@ -35,23 +36,23 @@ def build_audio_pairs(dir, pairs_path):
                     dir, f"Chunk_{curr_anchor_chunk}", "melspectrogram.npy"
                 )
                 anchor = np.load(anchor_path)
-                visualize_mel_spectrogram(
-                    anchor, os.path.join(dir, f"Chunk_{curr_anchor_chunk}")
-                )
+                # visualize_mel_spectrogram(
+                #     anchor, os.path.join(dir, f"Chunk_{curr_anchor_chunk}")
+                # )
 
-            # pos = np.load(pos_path)
-            # neg = np.load(neg_path)
+            pos = np.load(pos_path)
+            neg = np.load(neg_path)
 
-            # pair = np.array(
-            #     [
-            #         anchor[frame_id],
-            #         pos[pos_frame_id],
-            #         neg[neg_frame_id],
-            #     ]
-            # )
+            pair = np.array(
+                [
+                    anchor[frame_id],
+                    pos[pos_frame_id],
+                    neg[neg_frame_id],
+                ]
+            )
 
-            # outpath = os.path.join(
-            #     pairs_dir,
-            #     f"chunk{curr_anchor_chunk}_frame{frame_id}_pair.npy",
-            # )
-            # np.save(outpath, pair)
+            outpath = os.path.join(
+                pairs_dir,
+                f"chunk{curr_anchor_chunk}_frame{frame_id}_pair.npy",
+            )
+            np.save(outpath, pair)

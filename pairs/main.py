@@ -15,9 +15,7 @@ def create_pairs(input_dir: str) -> None:
         choose_and_save_pairs_for_video(speaking_csv_path, pairs_csv_path)
 
         build_visual_pairs(video_dir, pairs_csv_path)
-        build_audio_pairs(video_dir, pairs_csv_path)
-
-        break
+        # build_audio_pairs(video_dir, pairs_csv_path)
 
 
 if __name__ == "__main__":
