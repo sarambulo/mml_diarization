@@ -35,23 +35,23 @@ def build_audio_pairs(dir, pairs_path):
                     dir, f"Chunk_{curr_anchor_chunk}", "melspectrogram.npy"
                 )
                 anchor = np.load(anchor_path)
-                # visualize_mel_spectrogram(
-                #     anchor, os.path.join(dir, f"Chunk_{curr_anchor_chunk}")
-                # )
+                visualize_mel_spectrogram(
+                    anchor, os.path.join(dir, f"Chunk_{curr_anchor_chunk}")
+                )
 
-            pos = np.load(pos_path)
-            neg = np.load(neg_path)
+            # pos = np.load(pos_path)
+            # neg = np.load(neg_path)
 
-            pair = np.array(
-                [
-                    anchor[frame_id],
-                    pos[pos_frame_id],
-                    neg[neg_frame_id],
-                ]
-            )
+            # pair = np.array(
+            #     [
+            #         anchor[frame_id],
+            #         pos[pos_frame_id],
+            #         neg[neg_frame_id],
+            #     ]
+            # )
 
-            outpath = os.path.join(
-                pairs_dir,
-                f"chunk{curr_anchor_chunk}_frame{frame_id}_pair.npy",
-            )
-            np.save(outpath, pair)
+            # outpath = os.path.join(
+            #     pairs_dir,
+            #     f"chunk{curr_anchor_chunk}_frame{frame_id}_pair.npy",
+            # )
+            # np.save(outpath, pair)

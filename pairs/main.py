@@ -17,6 +17,8 @@ def create_pairs(input_dir: str) -> None:
         build_visual_pairs(video_dir, pairs_csv_path)
         build_audio_pairs(video_dir, pairs_csv_path)
 
+        break
+
 
 if __name__ == "__main__":
     create_pairs(INPUT_DIR)

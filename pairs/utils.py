@@ -27,10 +27,11 @@ def get_speaking_csv_files(directory):
 
 
 def visualize_mel_spectrogram(mel, output_dir):
+    print(mel.shape)
     plt.figure(figsize=(10, 6))
     plt.imshow(mel, aspect="auto", origin="lower", cmap="viridis")
     plt.colorbar(label="Amplitude")
     plt.title("Mel Spectrogram")
-    plt.xlabel("Time Frames")
-    plt.ylabel("Mel Bands")
+    plt.xlabel("Time")
+    plt.ylabel("Hz")
     plt.savefig(os.path.join(output_dir, "melspectrogram.png"))
