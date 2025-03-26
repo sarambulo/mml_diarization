@@ -1,4 +1,5 @@
 import os
+import matplotlib.pyplot as plt
 
 
 def create_numbered_file(dir, base_name, extension):
@@ -23,3 +24,13 @@ def get_speaking_csv_files(directory):
                 if file == "is_speaking.csv":
                     csv_files.append((root, file))
     return csv_files
+
+
+def visualize_mel_spectrogram(mel, output_dir):
+    plt.figure(figsize=(10, 6))
+    plt.imshow(mel, aspect="auto", origin="lower", cmap="viridis")
+    plt.colorbar(label="Amplitude")
+    plt.title("Mel Spectrogram")
+    plt.xlabel("Time Frames")
+    plt.ylabel("Mel Bands")
+    plt.savefig(os.path.join(output_dir, "melspectrogram.png"))
