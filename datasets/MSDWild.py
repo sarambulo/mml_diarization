@@ -53,14 +53,15 @@ IMG_HEIGHT = 112
 
 class MSDWildChunks(Dataset):
    def __init__(self, data_path: str, partition: str, subset: float = 1):
+      self.data_path = data_path
       self.subset = subset
       self.video_names = self.get_partition_video_ids(partition)
-      self.pairs_info = self.load_pairs_info(self.video_names)
+      self.pairs_info = self.load_pairs_info(data_path=data_path, video_names=self.video_names)
       N = floor(len(self.pairs_info) * subset)
       self.is_speaking = torch.stack(
          [pair_info['is_speaking'] for pair_info in self.pairs_info[:N]]
       )
-      self.triplets = self.load_triplets(self.pairs_info, N)
+      self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N)
       self.length = N
    def get_partition_video_ids(partition: str) -> List[str]:
       """
@@ -71,18 +72,22 @@ class MSDWildChunks(Dataset):
       """
       video names is the video ID, not the path
       Returns: [
-         {'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 },
-         {'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 }
+         {'video_id': 1, 'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 },
+         {'video_id': 1, 'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 }
       ]
       """
       # For each video
          # Load pairs.csv (ask Prachi)
       # Concat all paris.csv
-   def load_triplets(pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+   def load_triplets(data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor]]:
       """
-      Returns: 
+      Return: 
          List where each element is a Tuple = (visual_triplet_data, audio_triplet_data)
       """
+      triplets = []
+      for entry in pairs_info:
+         video_id = entry['video_id']
+         video_path = Path(data_path, f'{video_id:06d}')
 
       return
    def __getitem__(self, index):
