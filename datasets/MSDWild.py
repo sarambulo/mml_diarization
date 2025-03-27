@@ -44,9 +44,69 @@ import torch
 import pandas as pd
 import torchvision.transforms.v2 as ImageTransforms
 # import torchaudio.transforms as AudioTransforms
+from typing import List, Dict, Tuple
+from math import floor
 
 IMG_WIDTH = 112
 IMG_HEIGHT = 112
+
+
+class MSDWildChunks(Dataset):
+   def __init__(self, data_path: str, partition: str, subset: float = 1):
+      self.subset = subset
+      self.video_names = self.get_partition_video_ids(partition)
+      self.pairs_info = self.load_pairs_info(self.video_names)
+      N = floor(len(self.pairs_info) * subset)
+      self.is_speaking = torch.stack(
+         [pair_info['is_speaking'] for pair_info in self.pairs_info[:N]]
+      )
+      self.triplets = self.load_triplets(self.pairs_info, N)
+      self.length = N
+   def get_partition_video_ids(partition: str) -> List[str]:
+      """
+      Returns a list of video ID. For example: ['00001', '000002']
+      """
+      return
+   def load_pairs_info(video_names: List[str]) -> List[Dict]:
+      """
+      video names is the video ID, not the path
+      Returns: [
+         {'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 },
+         {'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 }
+      ]
+      """
+      # For each video
+         # Load pairs.csv (ask Prachi)
+      # Concat all paris.csv
+   def load_triplets(pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+      """
+      Returns: 
+         List where each element is a Tuple = (visual_triplet_data, audio_triplet_data)
+      """
+
+      return
+   def __getitem__(self, index):
+      """
+      video_data: torch.Tensor of dim (3, C, H, W)
+      audio_data: torch.Tensor of dim (3, B, T)
+      is_speaking: float NOTE: This is only for the anchor
+      """
+      # Index anchor, positive and negative
+      triplet = self.triplets[index]
+      video_data, audio_data = triplet
+      is_speaking = self.is_speaking[index]
+      video_data, audio_data, is_speaking
+   def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, float]]):
+      """
+      Returns a tuple
+      video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
+      """
+      # Extract each feature: do the zip thing
+      # Padding: NOTE: Not necessary
+      # Stack: 
+      # Return tuple((N, video_data, melspectrogram), (N, video_data, melspectrogram), (N, video_data, melspectrogram))
+      # (N, C, H, W), (N, Bands, T) x3 (ask Prachi)
+
 
 class MSDWildBase(Dataset):
    def __init__(self, data_path: str, partition: str, subset: float = 1):
