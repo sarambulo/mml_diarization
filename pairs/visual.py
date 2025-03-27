@@ -2,9 +2,10 @@ import os
 import pandas as pd
 import numpy as np
 from config import VIDEO_FPS
+from utils import visualize_visual_triplet
 
 
-def build_visual_pairs(dir, pairs_path):
+def build_visual_pairs(dir, pairs_path, visualize=False):
     pairs_dir = os.path.join(dir, "visual_pairs")
     os.makedirs(pairs_dir, exist_ok=True)
 
@@ -53,8 +54,16 @@ def build_visual_pairs(dir, pairs_path):
                 ]
             )
 
+            if visualize:
+                visualize_visual_triplet(
+                    images=pair,
+                    dir=pairs_dir,
+                    name=f"chunk{curr_anchor_chunk}_speaker{curr_anchor_speaker}_frame{frame_id}_pair",
+                )
+
             outpath = os.path.join(
                 pairs_dir,
                 f"chunk{curr_anchor_chunk}_speaker{curr_anchor_speaker}_frame{frame_id}_pair.npy",
             )
+
             np.save(outpath, pair)
