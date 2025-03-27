@@ -2,6 +2,7 @@ from typing import List, Tuple
 from .video import read_video, downsample_video, parse_bounding_boxes, extract_faces, transform_video
 from .audio import flatten_audio, transform_audio
 from .rttm import get_rttm_labels
+import math
 
 def build_chunks(
       video_path: str, bounding_boxes_path: str, rttm_path: str, seconds: int = 3,
@@ -18,7 +19,6 @@ def build_chunks(
    # Get video reader (generator)
    video_reader, metadata = read_video(video_path=video_path, seconds=seconds)
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
-
    chunks = []
    for i, chunk in enumerate(video_reader):
       # Stop after max_chunks
@@ -29,14 +29,14 @@ def build_chunks(
 
       # Audio
       audio_data = flatten_audio(audio_data) # (N, C)
-      melspectrogram = transform_audio(
-         audio_data, output_type='mfcc', sr=metadata['sampling_rate'], n_bands=30
+      melspectrogram, mfcc = transform_audio(
+         audio_data, sr=metadata['sampling_rate'], n_bands=30,target_tf=440
       ) # (Frequencies, Time)
-
+    #   print(melspectrogram.shape)
       # Video
       video_data, timestamps, frame_ids = downsample_video(
          video_frames=video_data, timestamps=timestamps,
-         frame_ids=frame_ids, factor=downsampling_factor
+         frame_ids=frame_ids, factor=math.ceil(metadata["fps"]/4)
       )
       try:
          faces = extract_faces(
@@ -53,6 +53,5 @@ def build_chunks(
       # Labels
       speaker_ids = list(faces.keys())
       is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids)
-   
-      chunks.append((faces, melspectrogram, is_speaking))
+      chunks.append((faces, melspectrogram, mfcc, is_speaking))
    return chunks
