@@ -74,7 +74,7 @@ def main():
         for chunk in chunks:
             # Update chunk index
             chunk_index +=1
-            faces, melspectrogram, is_speaking = chunk
+            faces, melspectrogram, mfcc, is_speaking = chunk
             chunk_dir = os.path.join(base_dir, f"Chunk_{chunk_index}")
             os.makedirs(chunk_dir, exist_ok=True)
 
@@ -88,6 +88,8 @@ def main():
             # Audio
             mel_file = os.path.join(chunk_dir, "melspectrogram.npy")
             np.save(mel_file, melspectrogram)
+            mfcc_file = os.path.join(chunk_dir, "mfcc.npy")
+            np.save(mfcc_file, mfcc)
 
             # Video
             for speaker_id, face_dict in faces.items():

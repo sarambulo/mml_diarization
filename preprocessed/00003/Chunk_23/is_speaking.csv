@@ -30,10 +30,10 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 1,9,True,3,23
 2,9,False,3,23
 0,10,True,3,23
-1,10,False,3,23
+1,10,True,3,23
 2,10,False,3,23
 0,11,True,3,23
-1,11,True,3,23
+1,11,False,3,23
 2,11,False,3,23
 0,12,True,3,23
 1,12,True,3,23
@@ -47,3 +47,9 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 0,15,True,3,23
 1,15,True,3,23
 2,15,False,3,23
+0,16,True,3,23
+1,16,True,3,23
+2,16,False,3,23
+0,17,True,3,23
+1,17,True,3,23
+2,17,False,3,23

@@ -102,7 +102,7 @@ def downsample_video(
     video_frames: torch.Tensor,
     timestamps: torch.Tensor,
     frame_ids: torch.Tensor,
-    factor: int = 5,
+    factor: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
      Downsamples a video and returns the remaining frames, timestamps and frame IDs.
