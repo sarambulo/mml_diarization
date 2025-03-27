@@ -6,7 +6,9 @@ import itertools
 import pandas as pd
 import numpy as np
 import torchvision.transforms.v2 as ImageTransforms
-
+import boto3
+import os
+s3 = boto3.resource('s3')
 
 def read_video(
     video_path: str, seconds: float = 3
@@ -31,6 +33,9 @@ def read_video(
     if not Path(video_path).exists():
         raise FileExistsError(f"file {video_path} not found")
     video_path = str(video_path)
+    s3.download_file(bucket_name, video_path , video_path)
+    # obj = s3.get_object(Bucket="mmml-proj", Key=video_path)
+    # obj['Body'].read().decode('utf-8') 
 
     # Create a streams to read the video and audio
     video_stream = VideoReader(video_path, stream='video')
@@ -42,6 +47,7 @@ def read_video(
         "sampling_rate": metadata["audio"]["framerate"][0],
     }
     chunk_generator = generate_chunks(video_stream=video_stream, audio_stream=audio_stream, seconds=seconds)
+    os.remove(video_path)
     return chunk_generator, metadata
 
 
@@ -130,7 +136,7 @@ def parse_bounding_boxes(bounding_boxes_path: str) -> Dict[int, Dict[int, Dict]]
     if not Path(bounding_boxes_path).exists():
         raise FileExistsError(f"Bounding boxes file {bounding_boxes_path} not found")
     # Read CSV with no headers (ensure all rows are treated as data)
-    df = pd.read_csv(bounding_boxes_path, header=None)
+    df = pd.read_csv("s3://mmml-proj/"+bounding_boxes_path, header=None)
 
     # Manually assign column names
     df.columns = [

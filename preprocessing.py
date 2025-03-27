@@ -8,7 +8,11 @@ import pandas as pd
 import shutil
 from pathlib import Path
 from tqdm import tqdm
+import boto3
 
+bucket_name = 'mmml-proj'
+
+s3 = boto3.client('s3')
 def main():
     parser = argparse.ArgumentParser(description="Create chunks from all .mp4 videos in a directory.")
     parser.add_argument('-d', "--data_dir", type=str, required=True,
@@ -31,27 +35,32 @@ def main():
                         help="True if pixel values should be centered and scaled.")
     args = parser.parse_args()
 
-    video_files = sorted(glob.glob(os.path.join(args.data_dir, "*.mp4")))
+    # video_files = sorted(glob.glob(os.path.join(args.data_dir, "*.mp4")))
 
     MAX_CHUNKS = args.total_seconds // args.seconds
 
     # Clean the output directory
     if Path(args.output_path).exists():
         shutil.rmtree(args.output_path)
-    
+
     # Process videos
     start_time = time()
     video_counter = 0
     chunk_index = 0
+    response = s3.list_objects_v2(Bucket=bucket_name)
+    
+    video_files=[obj['Key'] for obj in response['Contents'] if obj['Key'].endswith(".mp4")]
+    print(video_files[:10])
+
     for video_file in tqdm(video_files, desc='Processing videos'):
         video_counter += 1
         # Create arguments for build_chunks
         base_name = os.path.basename(video_file)      
         video_id = os.path.splitext(base_name)[0]      
         bounding_boxes_path = os.path.join(args.data_dir, f"{video_id}.csv")
-        if not os.path.isfile(bounding_boxes_path):
-            print(f"Warning: No CSV found for {video_file} (expected {bounding_boxes_path}). Skipping.")
-            continue
+        # if not os.path.isfile(bounding_boxes_path):
+        #     print(f"Warning: No CSV found for {video_file} (expected {bounding_boxes_path}). Skipping.")
+        #     continue
         video_name = os.path.splitext(os.path.basename(video_file))[0]
         base_dir = os.path.join(args.output_path, video_name)
         os.makedirs(base_dir, exist_ok=True)
@@ -84,7 +93,7 @@ def main():
             is_speaking["chunk_id"] = chunk_index
             is_speaking.to_csv(csv_path, index=False)
             all_is_speaking.append(is_speaking)
-
+            
             # Audio
             mel_file = os.path.join(chunk_dir, "melspectrogram.npy")
             np.save(mel_file, melspectrogram)
@@ -105,7 +114,7 @@ def main():
             final_speaking_df.to_csv(final_csv_path, index=False)
 
     end_time = time()
-    print(f"Created {chunk_index + 1} chunks across {video_counter + 1} videos in {end_time - start_time:.0f} seconds")
+    print(f"Created {chunk_index} chunks across {video_counter} videos in {end_time - start_time:.0f} seconds")
 
 if __name__ == "__main__":
     main()

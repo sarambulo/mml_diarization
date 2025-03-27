@@ -34,7 +34,7 @@ def get_rttm_labels(
     pd.DataFrame
         DataFrame with columns ["face_id", "frame_id", "is_speaking"].
     """
-
+    
     speakers= [str(x) for x in speaker_ids]
     
     intervals = {}
