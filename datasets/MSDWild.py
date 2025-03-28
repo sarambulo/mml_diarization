@@ -33,7 +33,7 @@ MSDWildVideos is in charge for extracting the corresponding sequence of frames f
 the same video and correspond to the next segment where the anchor is not speaking and there is
 another active speaker.
 """
-
+import os
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
@@ -64,22 +64,51 @@ class MSDWildChunks(Dataset):
       )
       self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N)
       self.length = N
+
    def get_partition_video_ids(partition: str) -> List[str]:
       """
       Returns a list of video ID. For example: ['00001', '000002']
       """
-      return
+      video_ids = set()
+      with open(partition, "r") as f:
+        for line in f:
+            parts = line.strip().split()
+            video_ids.add(parts[1])
+      return sorted(list(video_ids))
+
+
    def load_pairs_info(video_names: List[str]) -> List[Dict]:
       """
       video names is the video ID, not the path
       Returns: [
-         {'video_id': 1, 'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 },
-         {'video_id': 1, 'chunk_id': 1, 'frame_id': 2, 'speaker_id': 0, 'is_speaking': 1 }
+         {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1 ,'frame_id': 2,},
+         {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1, 'frame_id': 2 }
       ]
       """
       # For each video
-         # Load pairs.csv (ask Prachi)
-      # Concat all paris.csv
+         # Load pairs.csv 
+      # Concat all pairs.csv
+      all_pairs = []
+
+      for video_id in video_names:
+            pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
+            if not os.path.isfile(pairs_csv_path):
+                print(f"Warning: pairs.csv not found for video {video_id}")
+                continue
+            df = pd.read_csv(pairs_csv_path)
+
+            for _, row in df.iterrows():
+                all_pairs.append({
+                    "video_id": video_id,
+                    "chunk_id": int(row["chunk_id"]),
+                    "speaker_id": int(row["speaker_id"]),
+                    "is_speaking": int(row["is_speaking"]),
+                    "frame_id": int(row["frame_id"])
+                })
+      return all_pairs
+   
+
+
    def load_triplets(data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor]]:
       """
       Return: 
