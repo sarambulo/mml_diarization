@@ -57,12 +57,12 @@ class MSDWildChunks(Dataset):
       self.data_path = data_path
       self.subset = subset
       self.video_names = self.get_partition_video_ids(partition_path)
-      self.pairs_info = self.load_pairs_info(data_path=data_path, video_names=self.video_names)
+      self.pairs_info = self.load_pairs_info(video_names=self.video_names)
       N = floor(len(self.pairs_info) * subset)
       self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N=N)
       self.length = N
 
-   def get_partition_video_ids(partition_path: str) -> List[str]:
+   def get_partition_video_ids(self, partition_path: str) -> List[str]:
       """
       Returns a list of video ID. For example: ['00001', '000002']
       """
