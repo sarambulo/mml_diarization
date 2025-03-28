@@ -37,5 +37,5 @@ def debug_dataset(dataset, num_samples: int = 1):
 data_path = "/Users/AnuranjanAnand/Desktop/MML/mml_diarization/preprocessed"  # base directory
 partition_path = "/Users/AnuranjanAnand/Desktop/MML/mml_diarization/data_sample/few_train.rttm"  # your rttm partition file
 
-dataset = MSDWildChunks(data_path=data_path, partition=partition_path, subset=1.0)
+dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path, subset=1.0)
 debug_dataset(dataset, num_samples=3)
