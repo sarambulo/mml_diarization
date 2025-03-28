@@ -37,12 +37,12 @@ import os
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
-from .utils import get_streams, parse_rttm, read_audio, read_video
+# from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
 import random
 import torch
 import pandas as pd
-import torchvision.transforms.v2 as ImageTransforms
+# import torchvision.transforms.v2 as ImageTransforms
 # import torchaudio.transforms as AudioTransforms
 from typing import List, Dict, Tuple
 from math import floor
@@ -57,12 +57,12 @@ class MSDWildChunks(Dataset):
       self.data_path = data_path
       self.subset = subset
       self.video_names = self.get_partition_video_ids(partition)
-      self.pairs_info = self.load_pairs_info(data_path=data_path, video_names=self.video_names)
+      self.pairs_info = self.load_pairs_info(video_names=self.video_names)
       N = floor(len(self.pairs_info) * subset)
       self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N=N)
       self.length = N
 
-   def get_partition_video_ids(partition: str) -> List[str]:
+   def get_partition_video_ids(self, partition: str) -> List[str]:
       """
       Returns a list of video ID. For example: ['00001', '000002']
       """
@@ -74,7 +74,7 @@ class MSDWildChunks(Dataset):
       return sorted(list(video_ids))
 
 
-   def load_pairs_info(video_names: List[str]) -> List[Dict]:
+   def load_pairs_info(self, video_names: List[str]) -> List[Dict]:
       """
       video names is the video ID, not the path
       Returns: [
@@ -85,28 +85,30 @@ class MSDWildChunks(Dataset):
       # For each video
          # Load pairs.csv 
       # Concat all pairs.csv
-      all_pairs = []
+      all_pairs = {}
 
       for video_id in video_names:
-            pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
-            if not os.path.isfile(pairs_csv_path):
-                print(f"Warning: pairs.csv not found for video {video_id}")
-                continue
-            df = pd.read_csv(pairs_csv_path)
+        pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
+        if not os.path.isfile(pairs_csv_path):
+            print(f"Warning: pairs.csv not found for video {video_id}")
+            continue
 
-            for _, row in df.iterrows():
-                all_pairs.append({
-                    "video_id": video_id,
-                    "chunk_id": int(row["chunk_id"]),
-                    "speaker_id": int(row["speaker_id"]),
-                    "is_speaking": int(row["is_speaking"]),
-                    "frame_id": int(row["frame_id"])
-                })
+        df = pd.read_csv(pairs_csv_path)
+
+        for _, row in df.iterrows():
+            key = (
+                video_id,
+                int(row["chunk_id"]),
+                int(row["frame_id"]),
+                str(row["speaker_id"])  # convert to string as requested
+            )
+            all_pairs[key] = int(row["is_speaking"])
+
       return all_pairs
    
 
 
-   def load_triplets(data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
+   def load_triplets(self, data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
       """
       Loads all triplets stored within each video and chunk directory inside
       `data_path`. Looks for that video, chunk, frame and speaker in `pairs_info`
