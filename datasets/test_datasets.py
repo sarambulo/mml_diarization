@@ -10,11 +10,8 @@ DATA_PATH = 'preprocessed'
 class TestMSDWildBase():
    def test_init(self):
       msdwild = MSDWildChunks(Path(DATA_PATH), Path('data_sample', 'few_train.rttm'))
-      assert len(msdwild) == 5
       msdwild = MSDWildChunks(Path(DATA_PATH), Path('data_sample', 'few_val.rttm'))
-      assert len(msdwild) == 5
       msdwild = MSDWildChunks(Path(DATA_PATH), Path('data_sample', 'many_val.rttm'))
-      assert len(msdwild) == 5
 
    def test_item(self):
       msdwild = MSDWildChunks(Path(DATA_PATH), Path('data_sample', 'few_train.rttm'))

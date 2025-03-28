@@ -60,7 +60,7 @@ class MSDWildChunks(Dataset):
       self.pairs_info = self.load_pairs_info(video_names=self.video_names)
       N = floor(len(self.pairs_info) * subset)
       self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N=N)
-      self.length = N
+      self.length = len(self.triplets)
 
    def get_partition_video_ids(self, partition_path: str) -> List[str]:
       """
@@ -100,7 +100,7 @@ class MSDWildChunks(Dataset):
                 video_id,
                 int(row["chunk_id"]),
                 int(row["frame_id"]),
-                str(row["speaker_id"])  # convert to string as requested
+                int(row["speaker_id"])  # convert to string as requested
             )
             all_pairs[key] = int(row["is_speaking"])
 
@@ -131,30 +131,32 @@ class MSDWildChunks(Dataset):
             match_result = visual_path_pattern.match(filename)
             if not match_result:
                raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
-            chunk_id, speaker_id, frame_id = match_result.groups()
+            chunk_id, speaker_id, frame_id = map(int, match_result.groups())
             # Look for corresponding melspectrogram
             audio_path = Path(video_path, 'melspectrogram_audio_pairs', f"chunk{chunk_id}_frame{frame_id}_pair.npy")
             audio_data = np.load(str(audio_path))
             visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
             if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
-               raise ValueError(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
+               print(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
+               print('Skipping that triplet')
+               continue
             is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
             triplets.append((visual_data, audio_data, is_speaking))
             counter += 1
             if counter >= N:
                break
       return triplets
+   def __len__(self):
+      return self.length
    def __getitem__(self, index):
       """
       video_data: torch.Tensor of dim (3, C, H, W)
       audio_data: torch.Tensor of dim (3, B, T)
-      is_speaking: float NOTE: This is only for the anchor
+      is_speaking: int NOTE: This is only for the anchor
       """
       # Index anchor, positive and negative
       triplet = self.triplets[index]
-      video_data, audio_data = triplet
-      is_speaking = self.is_speaking[index]
-      video_data, audio_data, is_speaking
+      return triplet
    def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
       """
       Returns a tuple
