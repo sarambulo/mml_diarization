@@ -59,10 +59,7 @@ class MSDWildChunks(Dataset):
       self.video_names = self.get_partition_video_ids(partition)
       self.pairs_info = self.load_pairs_info(data_path=data_path, video_names=self.video_names)
       N = floor(len(self.pairs_info) * subset)
-      self.is_speaking = torch.stack(
-         [pair_info['is_speaking'] for pair_info in self.pairs_info[:N]]
-      )
-      self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N)
+      self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N=N)
       self.length = N
 
    def get_partition_video_ids(partition: str) -> List[str]:
@@ -109,28 +106,41 @@ class MSDWildChunks(Dataset):
    
 
 
-   def load_triplets(data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+   def load_triplets(data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
       """
+      Loads all triplets stored within each video and chunk directory inside
+      `data_path`. Looks for that video, chunk, frame and speaker in `pairs_info`
+      to determine the value of `is_speaking` for the anchor
+
       Return: 
-         List where each element is a Tuple = (visual_triplet_data, audio_triplet_data)
+         List where each element is a Tuple = (visual_triplet_data, audio_triplet_data, is_speaking)
       """
-      visual_triplets_paths = Path(data_path, 'visual_pairs')
       visual_path_pattern = re.compile(r'chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy')
       triplets = []
-      # Load visual data
-      for path in visual_triplets_paths.iterdir():
-         visual_data = np.load(str(path))
-         filename = path.name
-         match_result = visual_path_pattern.match(filename)
-         if not match_result:
-            raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
-         chunk_id = match_result.group(0)
-         frame_id = match_result.group(2)
-         # Look for corresponding melspectrogram
-         audio_path = f"chunk{chunk_id}_frame{frame_id}_pair.npy"
-         audio_data = np.load(str(audio_path))
-         visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
-         triplets.append((visual_data, audio_data))
+      counter = 0
+      # Videos
+      for video_path in Path(data_path).iterdir():
+         video_id = int(video_path.name)
+         visual_triplets_paths = Path(video_path, 'visual_pairs')
+         # Load visual data
+         for path in visual_triplets_paths.iterdir():
+            visual_data = np.load(str(path))
+            filename = path.name
+            match_result = visual_path_pattern.match(filename)
+            if not match_result:
+               raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
+            chunk_id, frame_id, speaker_id = match_result.groups()
+            # Look for corresponding melspectrogram
+            audio_path = f"chunk{chunk_id}_frame{frame_id}_pair.npy"
+            audio_data = np.load(str(audio_path))
+            visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
+            if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
+               raise ValueError(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
+            is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
+            triplets.append((visual_data, audio_data, is_speaking))
+            counter += 1
+            if counter >= N:
+               break
       return triplets
    def __getitem__(self, index):
       """
@@ -143,7 +153,7 @@ class MSDWildChunks(Dataset):
       video_data, audio_data = triplet
       is_speaking = self.is_speaking[index]
       video_data, audio_data, is_speaking
-   def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, float]]):
+   def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
       """
       Returns a tuple
       video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
