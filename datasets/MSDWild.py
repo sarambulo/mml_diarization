@@ -122,7 +122,7 @@ class MSDWildChunks(Dataset):
       counter = 0
       # Videos
       for video_path in Path(data_path).iterdir():
-         video_id = int(video_path.name)
+         video_id = video_path.name
          visual_triplets_paths = Path(video_path, 'visual_pairs')
          # Load visual data
          for path in visual_triplets_paths.iterdir():
@@ -131,9 +131,9 @@ class MSDWildChunks(Dataset):
             match_result = visual_path_pattern.match(filename)
             if not match_result:
                raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
-            chunk_id, frame_id, speaker_id = match_result.groups()
+            chunk_id, speaker_id, frame_id = match_result.groups()
             # Look for corresponding melspectrogram
-            audio_path = f"chunk{chunk_id}_frame{frame_id}_pair.npy"
+            audio_path = Path(video_path, 'melspectrogram_audio_pairs', f"chunk{chunk_id}_frame{frame_id}_pair.npy")
             audio_data = np.load(str(audio_path))
             visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
             if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:

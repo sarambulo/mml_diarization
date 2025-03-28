@@ -17,7 +17,7 @@ class TestMSDWildBase():
       assert len(msdwild) == 5
 
    def test_item(self):
-      msdwild = MSDWildChunks(Path(DATA_PATH), 'few_train.rttm')
+      msdwild = MSDWildChunks(Path(DATA_PATH), Path('data_sample', 'few_train.rttm'))
       for data in msdwild:
          video_data, audio_data, is_speaking = data
          # First element is the video data
