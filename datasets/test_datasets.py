@@ -23,8 +23,23 @@ class TestMSDWildBase():
          # Second element is the audio stream
          assert isinstance(audio_data, torch.Tensor)
          assert audio_data.shape == (3, 30, 22)
-         # Third element is the parsed rttm
+         # Third element is the speaking binary label
          assert isinstance(is_speaking, int)
+   
+   def test_batching(self):
+      msdwild = MSDWildChunks(Path(DATA_PATH), Path('data_sample', 'few_train.rttm'))
+      data_loader = DataLoader(msdwild, batch_size=5, collate_fn=msdwild.build_batch)
+      for batch in data_loader:
+         video_data, audio_data, is_speaking = batch
+         # First element is the video data
+         assert isinstance(video_data, torch.Tensor)
+         assert video_data.shape == (5, 3, 3, 112, 112)
+         # Second element is the audio stream
+         assert isinstance(audio_data, torch.Tensor)
+         assert audio_data.shape == (5, 3, 30, 22)
+         # Third element is the speaking binary label
+         assert isinstance(is_speaking, torch.Tensor)
+         assert is_speaking.shape == (5, )
 
 # class TestMSDWildFrames():
 #    def test_init(self):
