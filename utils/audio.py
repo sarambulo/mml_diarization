@@ -3,15 +3,15 @@ import torch
 import numpy as np
 import librosa
 
+
 def flatten_audio(audio_data: np.ndarray) -> np.ndarray:
-   
-   """
+    """
     Flattens a multi-channel audio input into a single channel (mono) signal
     by averaging across channels. If the input is already mono, it is returned
     unchanged.
-    
+
     Parameters:
-        audio_data (np.ndarray): Audio data array. 
+        audio_data (np.ndarray): Audio data array.
                                  Shape could be (samples,) or (channels, samples).
 
     Returns:
@@ -19,12 +19,12 @@ def flatten_audio(audio_data: np.ndarray) -> np.ndarray:
     """
     # If audio has more than one dimension (e.g., [channels, samples]),
     # average across channels to get a single channel.
-#    if isinstance(audio_data, torch.Tensor):
-#         audio_data = audio_data.detach().cpu().numpy()
-   audio_shape=audio_data.shape
-#    print(audio_shape)
-   audio_data=audio_data.reshape((-1,audio_shape[-1])) 
-   return audio_data
+    #    if isinstance(audio_data, torch.Tensor):
+    #         audio_data = audio_data.detach().cpu().numpy()
+    audio_shape = audio_data.shape
+    #    print(audio_shape)
+    audio_data = audio_data.reshape((-1, audio_shape[-1]))
+    return audio_data
 
 
 def transform_audio(
@@ -38,7 +38,7 @@ def transform_audio(
 ) -> np.ndarray:
     """
     Transforms audio into a log-mel spectrogram using librosa.
-    
+
     Parameters:
         audio_data (np.ndarray): Mono audio data (1D array).
         sr (int): Sampling rate of the audio. Approx 44k.

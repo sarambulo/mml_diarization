@@ -1,4 +1,5 @@
 from pyannote.core import Annotation, Segment
+import os
 
 
 def rttm_to_annotations(path):
@@ -10,6 +11,14 @@ def rttm_to_annotations(path):
             ann[Segment(start=seg["startTime"], end=seg["endTime"])] = seg["speakerId"]
         annotations[videoId] = ann
     return annotations
+
+
+def load_rttm_by_video_from_folder(path):
+    data = {}
+    for videoName in os.listdir(path):
+        videoPath = os.path.join(path, videoName)
+        data.update(load_rttm_by_video(videoPath))
+    return data
 
 
 def load_rttm_by_video(path):
