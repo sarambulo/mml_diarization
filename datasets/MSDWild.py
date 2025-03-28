@@ -46,6 +46,7 @@ import torchvision.transforms.v2 as ImageTransforms
 # import torchaudio.transforms as AudioTransforms
 from typing import List, Dict, Tuple
 from math import floor
+import re
 
 IMG_WIDTH = 112
 IMG_HEIGHT = 112
@@ -84,12 +85,24 @@ class MSDWildChunks(Dataset):
       Return: 
          List where each element is a Tuple = (visual_triplet_data, audio_triplet_data)
       """
+      visual_triplets_paths = Path(data_path, 'visual_pairs')
+      visual_path_pattern = re.compile(r'chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy')
       triplets = []
-      for entry in pairs_info:
-         video_id = entry['video_id']
-         video_path = Path(data_path, f'{video_id:06d}')
-
-      return
+      # Load visual data
+      for path in visual_triplets_paths.iterdir():
+         visual_data = np.load(str(path))
+         filename = path.name
+         match_result = visual_path_pattern.match(filename)
+         if not match_result:
+            raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
+         chunk_id = match_result.group(0)
+         frame_id = match_result.group(2)
+         # Look for corresponding melspectrogram
+         audio_path = f"chunk{chunk_id}_frame{frame_id}_pair.npy"
+         audio_data = np.load(str(audio_path))
+         visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
+         triplets.append((visual_data, audio_data))
+      return triplets
    def __getitem__(self, index):
       """
       video_data: torch.Tensor of dim (3, C, H, W)
@@ -107,11 +120,15 @@ class MSDWildChunks(Dataset):
       video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
       """
       # Extract each feature: do the zip thing
+      video_data, audio_data, is_speaking = list(zip(*batch_examples))
       # Padding: NOTE: Not necessary
       # Stack: 
+      video_data = torch.stack(video_data)
+      audio_data = torch.stack(audio_data)
+      is_speaking = torch.tensor(is_speaking)
       # Return tuple((N, video_data, melspectrogram), (N, video_data, melspectrogram), (N, video_data, melspectrogram))
       # (N, C, H, W), (N, Bands, T) x3 (ask Prachi)
-
+      return video_data, audio_data, is_speaking
 
 class MSDWildBase(Dataset):
    def __init__(self, data_path: str, partition: str, subset: float = 1):
