@@ -96,7 +96,7 @@ def get_combined_negative_pair(
             if other_speaker_frames:
                 neg_face_id, neg_frame_id, _ = random.choice(other_speaker_frames)
                 return chunk_id, neg_face_id, neg_frame_id
-    return None
+    return None, None, None
 
 
 # INPUT: is_speaking.csv
@@ -151,9 +151,9 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
         )  # collect frames which are speaking but combined pair is not found
 
         for current_chunk, current_frame, _ in anchor_speaking_frames:
-            print(
-                f"Pairing chunk {current_chunk} frame {current_frame} speaker {anchor_speaker}"
-            )
+            # print(
+            #     f"Pairing chunk {current_chunk} frame {current_frame} speaker {anchor_speaker}"
+            # )
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_speaking_frames
             )  # get positive pair from speaking_frames only
@@ -181,7 +181,7 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
         # visual only case
         video_only_frames = anchor_non_speaking_frames + skipped_frames
         for current_chunk, current_frame, is_speaking in video_only_frames:
-            print(f"Video only pairing chunk {current_chunk} frame {current_frame}")
+            # print(f"Video only pairing chunk {current_chunk} frame {current_frame}")
             # get positive pair from any anchor frame
             pos_chunk, pos_frame = get_positive_pair(
                 current_chunk, current_frame, anchor_frames
@@ -218,3 +218,4 @@ def save_pair_info(pair_info_dict, output_file_path):
     #     pairs_df = current_pairs + pairs_df
     # # print(pairs_df)
     pairs_df.to_csv(output_file_path, index=False)
+    print("Saved Pairs Data to", output_file_path)
