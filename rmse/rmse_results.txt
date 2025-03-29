@@ -1,0 +1,7 @@
+
+=== Average RMSE for each model ===
+aws_transcribe_rttms: 0.5741
+diaper_rttms: 0.6526
+NEMO_output_rttms: 0.5476
+powerset: 0.4441
+pyannote_rttm_output/few_val: 0.4339
