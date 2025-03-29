@@ -8,7 +8,16 @@ from config import *
 
 
 def create_pairs() -> None:
-    for video_dir, speaking_filename in get_speaking_csv_files_s3(S3_BUCKET_NAME, S3_VIDEO_DIR, S3_SPEAKING_CSV_NAME):
+    chunked_dirs = set([dir for dir, _ in get_speaking_csv_files_s3(S3_BUCKET_NAME, S3_VIDEO_DIR, S3_SPEAKING_CSV_NAME)])
+    video_ids = list(reversed(range(2250, 3144)))
+    speaking_filename = "is_speaking.csv"
+    for video_id in video_ids:
+        video_id = str(video_id).zfill(5)
+        video_dir = f"s3://mmml-proj/preprocessed/{video_id}"
+        if video_dir not in chunked_dirs:
+            print("Can not find", video_dir)
+            continue
+        print("Building Pairs for Video", video_id)
         pairs_filename = "pairs.csv"  # create_numbered_file(video_dir, "pairs", "csv")
         pairs_csv_path = os.path.join(video_dir, pairs_filename)
         speaking_csv_path = os.path.join(video_dir, speaking_filename)
@@ -21,7 +30,6 @@ def create_pairs() -> None:
 
         # audio pairs = (3, num_bands=30, time_steps=22)
         build_audio_pairs(S3_BUCKET_NAME, video_id, pairs_csv_path, audio_type="melspectrogram")
-        break
 
 
 if __name__ == "__main__":
