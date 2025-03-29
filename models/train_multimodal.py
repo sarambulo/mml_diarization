@@ -8,23 +8,25 @@ import torch.nn.functional as F
 import sys
 import os
 import tqdm
-from .losses.DiarizationLoss import DiarizationLoss
-from ConcatModel import ConcatenationFusionModel
-from VisualOnly import ResNet34
-from .audio_train import AudioOnlyTDNN
-from .datasets import MSDWildChunks, build_batch
+from losses.DiarizationLoss import DiarizationLoss
+from models.ConcatModel import ConcatenationFusionModel
+from models.VisualOnly import ResNet34
+from audio_train import AudioOnlyTDNN
+from datasets.MSDWild import MSDWildChunks
+from torchinfo import summary
+
 
 def custom_collate_fn(batch):
     if not batch:
         return None
-    video_data, audio_data, labels = build_batch(batch)
+    video_data, audio_data, labels = MSDWildChunks.build_batch(batch)
     return {
         'video_data': video_data, 
         'audio_data': audio_data,
         'labels': labels
     }
 
-def train_epoch(model, train_loader, optimizer, criterion, device=DEVICE):
+def train_epoch(model, train_loader, optimizer, criterion, device):
     model.train()
     correct = 0
     total = 0
@@ -124,29 +126,27 @@ def main():
     
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    optimizer = optim.AdamW([
-        {'params': fusion_model.fusion_fc.parameters()},
-        {'params': fusion_model.bn.parameters()},
-        {'params': fusion_model.embedding_fc.parameters()},
-        {'params': fusion_model.classifier.parameters()}
-    ], lr=0.001, weight_decay=0.01)
-    
-    criterion = DiarizationLoss(triplet_lambda=0.3, cross_entropy_lambda=0.7)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.8)
-    
+   
     ##LOAD CHECKPOINTS
-    audio_model = AudioOnlyTDNN()
-    audio_model.load_state_dict(torch.load("audio_model.pth", map_location=DEVICE)) 
-    visual_model = ResNet34()
-    visual_model.load_state_dict(torch.load("visual_model.pth", map_location=DEVICE))
+    # audio_model = AudioOnlyTDNN()
+    # audio_model.load_state_dict(torch.load("audio_tdnn_model.pth", map_location=DEVICE)) 
+    # visual_model = ResNet34()
+    # visual_model.load_state_dict(torch.load("visual_model.pth", map_location=DEVICE))
     
     fusion_model = ConcatenationFusionModel(
-        audio_model=audio_model,
-        visual_model = visual_model,
+        audio_model=None,
+        visual_model = None,
         fusion_dim = 512,
-        embedding_dim = 256)
+        embedding_dim = 256).to(DEVICE)
+
+    visual_input = torch.randn(1, 3, 112, 112).to(DEVICE)
+    audio_input = torch.randn(1, 40, 100).to(DEVICE)
+
+    audio_embedding, video_embedding, fusion_embedding, probability = fusion_model.forward(audio_input, visual_input)
     
-    train_rttm_path = "few_train.rttm"
+    
+    
+    train_rttm_path = "few.train.rttm"
     train_data_path = ""
     
     train_dataset = MSDWildChunks(data_path=train_data_path, partition_path=train_rttm_path, subset=0.8)
@@ -169,6 +169,8 @@ def main():
         pin_memory=True
     )
     
+    print(len(train_loader))
+    
     val_loader = DataLoader(
         val_subset,
         batch_size=batch_size,
@@ -184,7 +186,19 @@ def main():
         3: 'all'           # unfreeze everything
     }
     
+    optimizer = optim.AdamW([
+        {'params': fusion_model.fusion_fc.parameters()},
+        {'params': fusion_model.bn.parameters()},
+        {'params': fusion_model.embedding_fc.parameters()},
+        {'params': fusion_model.classifier.parameters()}
+    ], lr=0.001, weight_decay=0.01)
+    
+    criterion = DiarizationLoss(triplet_lambda=0.3, cross_entropy_lambda=0.7)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.8)
+    
+    
     trained_model, best_val_loss = train_fusion_model(fusion_model, train_loader, val_loader, optimizer, 
                                                       criterion, scheduler, DEVICE, num_epochs=5, 
                                                       unfreeze_schedule = unfreeze_schedule)
-    
+
+main()

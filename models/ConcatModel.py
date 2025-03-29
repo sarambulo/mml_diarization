@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import sys
 import os
 import tqdm
-from VisualOnly import ResNet34
+from models.VisualOnly import ResNet34
 from audio_train import AudioOnlyTDNN
 
 
@@ -22,12 +22,12 @@ class ConcatenationFusionModel(nn.Module):
         else: 
             self.audio_encoder = audio_model
         if visual_model is None:
-            self.visual_encoder = ResNet34(embeddin_dims=512)
+            self.visual_encoder = ResNet34(embedding_dims=512)
         else: 
-            self.visual_encoder = audio_model
+            self.visual_encoder = visual_model
         
         audio_dim = self.audio_encoder.fc2.out_features
-        visual_dim = self.visual_encoder.visual_encoder.model[-3].out_channels
+        visual_dim = self.visual_encoder.model[-3].out_channels
         
         if fusion_type == 'concat':
             input_dim = audio_dim + visual_dim
