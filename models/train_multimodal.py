@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from sklearn.cluster import AgglomerativeClustering
 import torchaudio.transforms as AT
 import torch.nn.functional as F
@@ -103,13 +103,22 @@ def train_fusion_model(model, train_loader, val_loader, optimizer, criterion, sc
         
         scheduler.step(val_loss)
         #TO-DO: ADD MODEL SAVING/CHECKPOINT DIRECTORY
-
+        if val_loss < best_loss:
+            best_loss = val_loss
+          
+    return model, best_loss
 
 def main():
     
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    #ADAMW OPTIMIZER - look up param info - update with unfreezing schedule
+    optimizer = optim.AdamW([
+        {'params': fusion_model.fusion_fc.parameters()},
+        {'params': fusion_model.bn.parameters()},
+        {'params': fusion_model.embedding_fc.parameters()},
+        {'params': fusion_model.classifier.parameters()}
+    ], lr=0.001, weight_decay=0.01)
+    
     criterion = DiarizationLoss(triplet_lambda=0.3, cross_entropy_lambda=0.7)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.8)
     
@@ -122,3 +131,45 @@ def main():
         visual_model = visual_model,
         fusion_dim = 512,
         embedding_dim = 256)
+    
+    train_rttm_path = "few_train.rttm"
+    train_data_path = ""
+    
+    train_dataset = MSDWildChunks(data_path=train_data_path, partition_path=train_rttm_path, subset=0.8)
+    
+    #split few_train into train + val
+    train_size = int(0.8 * len(train_dataset))
+    val_size = len(train_dataset) - train_size
+    
+    train_subset, val_subset = random_split(train_dataset, [train_size, val_size], 
+                                            generator=torch.Generator().manual_seed(69))
+    
+   
+    batch_size = 32  # Adjust based on your GPU memory
+    train_loader = DataLoader(
+        train_subset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=custom_collate_fn,
+        num_workers=4,
+        pin_memory=True
+    )
+    
+    val_loader = DataLoader(
+        val_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=custom_collate_fn,
+        num_workers=4,
+        pin_memory=True
+    )
+    
+    unfreeze_schedule = {
+        2: 'audio_last',   #after 2 epochs - unfreeze last layers of audio encoder
+        2: 'visual_last',  # same as above for visual
+        3: 'all'           # unfreeze everything
+    }
+    
+    trained_model, best_val_loss = train_fusion_model(fusion_model, train_loader, val_loader, optimizer, 
+                                                      criterion, scheduler, DEVICE, num_epochs=5, 
+                                                      unfreeze_schedule = unfreeze_schedule)
