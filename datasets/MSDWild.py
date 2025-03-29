@@ -33,15 +33,18 @@ MSDWildVideos is in charge for extracting the corresponding sequence of frames f
 the same video and correspond to the next segment where the anchor is not speaking and there is
 another active speaker.
 """
+
 import os
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
+
 # from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
 import random
 import torch
 import pandas as pd
+
 # import torchvision.transforms.v2 as ImageTransforms
 # import torchaudio.transforms as AudioTransforms
 from typing import List, Dict, Tuple
@@ -53,130 +56,143 @@ IMG_HEIGHT = 112
 
 
 class MSDWildChunks(Dataset):
-   def __init__(self, data_path: str, partition_path: str, subset: float = 1):
-      self.data_path = data_path
-      self.subset = subset
-      self.video_names = self.get_partition_video_ids(partition_path)
-      self.pairs_info = self.load_pairs_info(video_names=self.video_names)
-      N = floor(len(self.pairs_info) * subset)
-      self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N=N)
-      self.length = len(self.triplets)
+    def __init__(self, data_path: str, rttm_path: str, subset: float = 1):
+        self.data_path = data_path
+        self.subset = subset
+        self.video_names = self.get_partition_video_ids(rttm_path)
+        self.pairs_info = self.load_pairs_info(video_names=self.video_names)
+        N = floor(len(self.pairs_info) * subset)
+        self.triplets = self.load_triplets(
+            data_path=data_path, pairs_info=self.pairs_info, N=N
+        )
+        self.length = len(self.triplets)
 
-   def get_partition_video_ids(self, partition_path: str) -> List[str]:
-      """
-      Returns a list of video ID. For example: ['00001', '000002']
-      """
-      video_ids = set()
-      with open(partition_path, "r") as f:
-        for line in f:
-            parts = line.strip().split()
-            video_ids.add(parts[1])
-      return sorted(list(video_ids))
+    def get_partition_video_ids(self, partition_path: str) -> List[str]:
+        """
+        Returns a list of video ID. For example: ['00001', '000002']
+        """
+        video_ids = set()
+        with open(partition_path, "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                video_ids.add(parts[1])
+        return sorted(list(video_ids))
 
+    def load_pairs_info(self, video_names: List[str]) -> List[Dict]:
+        """
+        video names is the video ID, not the path
+        Returns: [
+           {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1 ,'frame_id': 2,},
+           {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1, 'frame_id': 2 }
+        ]
+        """
+        # For each video
+        # Load pairs.csv
+        # Concat all pairs.csv
+        all_pairs = {}
 
-   def load_pairs_info(self, video_names: List[str]) -> List[Dict]:
-      """
-      video names is the video ID, not the path
-      Returns: [
-         {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1 ,'frame_id': 2,},
-         {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1, 'frame_id': 2 }
-      ]
-      """
-      # For each video
-         # Load pairs.csv 
-      # Concat all pairs.csv
-      all_pairs = {}
+        for video_id in video_names:
+            pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
+            if not os.path.isfile(pairs_csv_path):
+                print(f"Warning: pairs.csv not found for video {video_id}")
+                continue
 
-      for video_id in video_names:
-        pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
-        if not os.path.isfile(pairs_csv_path):
-            print(f"Warning: pairs.csv not found for video {video_id}")
-            continue
+            df = pd.read_csv(pairs_csv_path)
 
-        df = pd.read_csv(pairs_csv_path)
+            for _, row in df.iterrows():
+                key = (
+                    video_id,
+                    int(row["chunk_id"]),
+                    int(row["frame_id"]),
+                    int(row["speaker_id"]),  # convert to string as requested
+                )
+                all_pairs[key] = int(row["is_speaking"])
 
-        for _, row in df.iterrows():
-            key = (
-                video_id,
-                int(row["chunk_id"]),
-                int(row["frame_id"]),
-                int(row["speaker_id"])  # convert to string as requested
-            )
-            all_pairs[key] = int(row["is_speaking"])
+        return all_pairs
 
-      return all_pairs
-   
+    def load_triplets(
+        self, data_path: str, pairs_info: List[Dict], N: int
+    ) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
+        """
+        Loads all triplets stored within each video and chunk directory inside
+        `data_path`. Looks for that video, chunk, frame and speaker in `pairs_info`
+        to determine the value of `is_speaking` for the anchor
 
+        Return:
+           List where each element is a Tuple = (visual_triplet_data, audio_triplet_data, is_speaking)
+        """
+        visual_path_pattern = re.compile(r"chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy")
+        triplets = []
+        counter = 0
+        # Videos
+        for video_path in Path(data_path).iterdir():
+            video_id = video_path.name
+            visual_triplets_paths = Path(video_path, "visual_pairs")
+            # Load visual data
+            for path in visual_triplets_paths.iterdir():
+                visual_data = np.load(str(path))
+                filename = path.name
+                match_result = visual_path_pattern.match(filename)
+                if not match_result:
+                    raise ValueError(
+                        f"Visual pair {filename} does not match pattern {visual_path_pattern.pattern}"
+                    )
+                chunk_id, speaker_id, frame_id = map(int, match_result.groups())
+                # Look for corresponding melspectrogram
+                audio_path = Path(
+                    video_path,
+                    "melspectrogram_audio_pairs",
+                    f"chunk{chunk_id}_frame{frame_id}_pair.npy",
+                )
+                audio_data = np.load(str(audio_path))
+                visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
+                if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
+                    print(
+                        f"Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info"
+                    )
+                    print("Skipping that triplet")
+                    continue
+                is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
+                triplets.append((visual_data, audio_data, is_speaking))
+                counter += 1
+                if counter >= N:
+                    break
+        return triplets
 
-   def load_triplets(self, data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
-      """
-      Loads all triplets stored within each video and chunk directory inside
-      `data_path`. Looks for that video, chunk, frame and speaker in `pairs_info`
-      to determine the value of `is_speaking` for the anchor
+    def __len__(self):
+        return self.length
 
-      Return: 
-         List where each element is a Tuple = (visual_triplet_data, audio_triplet_data, is_speaking)
-      """
-      visual_path_pattern = re.compile(r'chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy')
-      triplets = []
-      counter = 0
-      # Videos
-      for video_path in Path(data_path).iterdir():
-         video_id = video_path.name
-         visual_triplets_paths = Path(video_path, 'visual_pairs')
-         # Load visual data
-         for path in visual_triplets_paths.iterdir():
-            visual_data = np.load(str(path))
-            filename = path.name
-            match_result = visual_path_pattern.match(filename)
-            if not match_result:
-               raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
-            chunk_id, speaker_id, frame_id = map(int, match_result.groups())
-            # Look for corresponding melspectrogram
-            audio_path = Path(video_path, 'melspectrogram_audio_pairs', f"chunk{chunk_id}_frame{frame_id}_pair.npy")
-            audio_data = np.load(str(audio_path))
-            visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
-            if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
-               print(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
-               print('Skipping that triplet')
-               continue
-            is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
-            triplets.append((visual_data, audio_data, is_speaking))
-            counter += 1
-            if counter >= N:
-               break
-      return triplets
-   def __len__(self):
-      return self.length
-   def __getitem__(self, index):
-      """
-      video_data: torch.Tensor of dim (3, C, H, W)
-      audio_data: torch.Tensor of dim (3, B, T)
-      is_speaking: int NOTE: This is only for the anchor
-      """
-      # Index anchor, positive and negative
-      triplet = self.triplets[index]
-      return triplet
-   def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
-      """
-      Returns a tuple
-      video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
-      """
-      # Extract each feature: do the zip thing
-      video_data, audio_data, is_speaking = list(zip(*batch_examples))
-      # Padding: NOTE: Not necessary
-      # Stack: 
-      video_data = torch.stack(video_data)
-      audio_data = torch.stack(audio_data)
-      is_speaking = torch.tensor(is_speaking)
-      # Return tuple((N, video_data, melspectrogram), (N, video_data, melspectrogram), (N, video_data, melspectrogram))
-      # (N, C, H, W), (N, Bands, T) x3 (ask Prachi)
-      return video_data, audio_data, is_speaking
+    def __getitem__(self, index):
+        """
+        video_data: torch.Tensor of dim (3, C, H, W)
+        audio_data: torch.Tensor of dim (3, B, T)
+        is_speaking: int NOTE: This is only for the anchor
+        """
+        # Index anchor, positive and negative
+        triplet = self.triplets[index]
+        return triplet
+
+    def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
+        """
+        Returns a tuple
+        video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
+        """
+        # Extract each feature: do the zip thing
+        video_data, audio_data, is_speaking = list(zip(*batch_examples))
+        # Padding: NOTE: Not necessary
+        # Stack:
+        video_data = torch.stack(video_data)
+        audio_data = torch.stack(audio_data)
+        is_speaking = torch.tensor(is_speaking)
+        # Return tuple((N, video_data, melspectrogram), (N, video_data, melspectrogram), (N, video_data, melspectrogram))
+        # (N, C, H, W), (N, Bands, T) x3 (ask Prachi)
+        return video_data, audio_data, is_speaking
+
 
 # class MSDWildBase(Dataset):
 #    def __init__(self, data_path: str, partition: str, subset: float = 1):
 #       """
-#       :param data_path str: path to the directory where the data is stored 
+#       :param data_path str: path to the directory where the data is stored
 #       :param partition str: few_train, few_val or many_val
 #       :param subset float: portion of the data to use, from 0 to 1
 #       """
@@ -226,7 +242,7 @@ class MSDWildChunks(Dataset):
 
 #       print(f"ERROR: Bounding boxes file {csv_path} not found!")
 #       return None
-   
+
 #    def __getitem__(self, index):
 #       video_name = self.video_names[int(index)]
 #       root = Path(self.data_path, 'msdwild_boundingbox_labels')
@@ -246,7 +262,7 @@ class MSDWildChunks(Dataset):
 # class MSDWildFrames(MSDWildBase):
 #    def __init__(self, data_path: str, partition: str, transforms = None, subset: float = 1):
 #       """
-#       :param data_path str: path to the directory where the data is stored 
+#       :param data_path str: path to the directory where the data is stored
 #       :param partition str: few_train, few_val or many_val
 #       """
 #       super().__init__(data_path, partition, subset)
@@ -277,10 +293,10 @@ class MSDWildChunks(Dataset):
 #          transforms['face'] = image_transform
 #          transforms['audio_segment'] = lambda x: torch.mean(x, dim=-1)
 #          self.transforms = transforms
-        
+
 #    def __len__(self):
 #       return self.video_last_frame_id[-1]
-   
+
 #    def get_video_index(self, frame_id, start = 0, end = None):
 #       """
 #       Binary search over the last frame id for each video
@@ -309,7 +325,7 @@ class MSDWildChunks(Dataset):
 #       # Search left
 #       else:
 #          return self.get_video_index(frame_id, start, mid_index - 1)
-   
+
 #    def get_frame_loc(self, frame_id):
 #       video_index = self.get_video_index(frame_id)
 #       # Edge case: First video
@@ -319,20 +335,20 @@ class MSDWildChunks(Dataset):
 #       frame_offset = frame_id - first_frame_id
 #       frame_timestamp = frame_offset / self.video_fps[video_index].item()
 #       return video_index, frame_offset, frame_timestamp
-   
+
 #    def get_speakers_at_ts(self, data, timestamp) -> np.ndarray:
-#       time_intervals, speaker_ids = data  
+#       time_intervals, speaker_ids = data
 #       start_times = time_intervals[:,0]
 #       durations=time_intervals[:, 1]
 #       end_times = start_times+ durations
 #       active_speaker_ids = [speaker_ids[i] for i in range(len(start_times)) if start_times[i] <= timestamp < end_times[i]]
 #       if not active_speaker_ids:
 #         max_speaker_id = max(speaker_ids, default=0)  # Avoid error if speaker_ids is empty
-#         return torch.zeros(max_speaker_id + 1, dtype=int)  
+#         return torch.zeros(max_speaker_id + 1, dtype=int)
 #       max_speaker_id = max(speaker_ids)  # Get max speaker ID for array size
-#       speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)  
+#       speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)
 #       for speaker_id in active_speaker_ids:
-#          speaker_vector[speaker_id] = 1 
+#          speaker_vector[speaker_id] = 1
 #       return speaker_vector
 
 #    def extract_faces_from_frame(self, frame, bounding_boxes, frame_offset):
@@ -347,7 +363,7 @@ class MSDWildChunks(Dataset):
 #          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
 #          x1, y1, x2, y2 = max(x1, 0), max(y1, 0), max(x2, 0), max(y2, 0)
 #          if x2 > x1 and y2 > y1:
-#             cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  
+#             cropped_faces[face_id] = frame[:, y1:y2, x1:x2]
 #       return cropped_faces
 
 
@@ -357,7 +373,7 @@ class MSDWildChunks(Dataset):
 #       # Edge case: first frame
 #       if frame_id == 0:
 #          start = 0
-#       else: 
+#       else:
 #          prev_file_id, prev_offset, prev_timestamp = self.get_frame_loc(frame_id - 1)
 #          # Case: first frame in video
 #          if prev_file_id != current_file_id:
@@ -374,7 +390,7 @@ class MSDWildChunks(Dataset):
 #          end = (current_timestamp + next_timestamp) / 2
 #       audio_frames = read_audio(audio_stream, start, end)
 #       return audio_frames
-   
+
 #    def get_features(self, frame_id):
 #       file_id, frame_offset, frame_timestamp = self.get_frame_loc(frame_id)
 #       video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(file_id)
@@ -411,11 +427,11 @@ class MSDWildChunks(Dataset):
 #             video_frame, audio_segment, labels, cropped_faces = self.get_features(candidate_frame)
 #       positive_sample = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
 #       return positive_sample
-   
+
 #    def get_negative_sample(self, file_id, face_id):
 #       if file_id is None:
 #          raise ValueError("file_id cannot be None")
-#       random_file_id = None 
+#       random_file_id = None
 #       while random_file_id == file_id:
 #          random_frame = random.randint(0, len(self) - 1)
 #       anchor, _ = self.get_features(random_frame)
@@ -432,14 +448,14 @@ class MSDWildChunks(Dataset):
 #       anchor_speaker_id, negative_sample_speaker_id = face_ids[:2]
 #       anchor = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
 #       negative_pair = video_frame, audio_segment, cropped_faces[negative_sample_speaker_id]
-#       positive_pair = self.get_positive_sample(index, anchor_speaker_id) 
+#       positive_pair = self.get_positive_sample(index, anchor_speaker_id)
 #       # print(labels)
 #       # print(anchor_speaker_id)
-#       if anchor_speaker_id >= len(labels):  
+#       if anchor_speaker_id >= len(labels):
 #          anchor_speaker_id = 0
 #       label = labels[anchor_speaker_id]
 #       return anchor, positive_pair, negative_pair, label
-   
+
 #    def build_batch(self, batch_examples: list):
 #       # batch_examples: [(anchor1, pos1, neg1, label1), (anchor2, pos2, neg2, label2)]
 #       batch_examples = [ex for ex in batch_examples if ex is not None]
@@ -462,7 +478,7 @@ class MSDWildChunks(Dataset):
 #          feature = [torch.tensor(sample) if sample is not None else torch.zeros(1) for sample in feature]
 #          feature = torch.nn.utils.rnn.pad_sequence(feature, batch_first=True)
 #          padded_features.append(feature)
-      
+
 #       padded_elements = []
 #       for i in range(3):
 #          element = []
@@ -475,7 +491,7 @@ class MSDWildChunks(Dataset):
 # class MSDWildVideos(MSDWildFrames):
 #    def __init__(self, data_path: str, partition: str, transforms, subset: float = 1, max_frames = 30):
 #       """
-#       :param data_path str: path to the directory where the data is stored 
+#       :param data_path str: path to the directory where the data is stored
 #       :param partition str: few_train, few_val or many_val
 #       """
 #       super().__init__(data_path, partition, transforms, subset)
@@ -513,7 +529,3 @@ class MSDWildChunks(Dataset):
 #          all_faces.append(faces)
 #          all_timestamps.append(frame_timestamp)
 #       return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps, self.video_names[index]
-
-
-
-
