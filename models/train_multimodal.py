@@ -10,6 +10,19 @@ import os
 import tqdm
 from .losses.DiarizationLoss import DiarizationLoss
 from ConcatModel import ConcatenationFusionModel
+from VisualOnly import ResNet34
+from .audio_train import AudioOnlyTDNN
+from .datasets import MSDWildChunks, build_batch
+
+def custom_collate_fn(batch):
+    if not batch:
+        return None
+    video_data, audio_data, labels = build_batch(batch)
+    return {
+        'video_data': video_data, 
+        'audio_data': audio_data,
+        'labels': labels
+    }
 
 def train_epoch(model, train_loader, optimizer, criterion, device=DEVICE):
     model.train()
@@ -50,7 +63,7 @@ def validate(model, val_loader, criterion, device):
     epoch_loss = 0.0
     
     with torch.no_grad():
-        for batch_idx, batch in enumerate(val_loader):
+        for batch in val_loader:
             video_data = batch['video_data'].to(device)
             audio_data = batch['audio_data'].to(device)
             labels = batch['labels'].to(device)
@@ -74,8 +87,7 @@ def train_fusion_model(model, train_loader, val_loader, optimizer, criterion, sc
     
     model.to(device)
     best_loss = float('inf')
-    
-    ##IMPLEMENT UNFREEZING SCHEDULE TO FIRST TRAIN FUSION ONLY THEN OPEN TO AUDIO/VIDEO
+
     
     if unfreeze_schedule is None:
         unfreeze_schedule = {2: 'audio_last', 2: 'video_last', 3: 'all'}
@@ -123,8 +135,10 @@ def main():
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.8)
     
     ##LOAD CHECKPOINTS
-    audio_model = None
-    visual_model = None
+    audio_model = AudioOnlyTDNN()
+    audio_model.load_state_dict(torch.load("audio_model.pth", map_location=DEVICE)) 
+    visual_model = ResNet34()
+    visual_model.load_state_dict(torch.load("visual_model.pth", map_location=DEVICE))
     
     fusion_model = ConcatenationFusionModel(
         audio_model=audio_model,
@@ -145,7 +159,7 @@ def main():
                                             generator=torch.Generator().manual_seed(69))
     
    
-    batch_size = 32  # Adjust based on your GPU memory
+    batch_size = 64
     train_loader = DataLoader(
         train_subset,
         batch_size=batch_size,
@@ -173,3 +187,4 @@ def main():
     trained_model, best_val_loss = train_fusion_model(fusion_model, train_loader, val_loader, optimizer, 
                                                       criterion, scheduler, DEVICE, num_epochs=5, 
                                                       unfreeze_schedule = unfreeze_schedule)
+    
