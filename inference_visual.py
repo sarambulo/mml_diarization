@@ -2,11 +2,11 @@ import torch
 import pandas as pd
 from torch.utils.data import DataLoader
 from pathlib import Path
-
+from tqdm import tqdm
 # Replace with your actual imports, e.g.:
 # from your_dataset_module import SingleFrameTestDataset
 # from your_model_module import VisualOnlyModel
-from SingleFrameTestDataset import SingleFrameTestDataset  # assuming file name
+from datasets.LoaderTest import TestDataset  
 from models.VisualOnly import VisualOnlyModel  # assuming file name
 
 # Set device
@@ -33,9 +33,9 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
     predictions = []
     
     with torch.no_grad():
-        for face_tensor, audio_segment, label, metadata in test_loader:
+        for face_tensor, audio_segment, label, metadata in tqdm(test_loader, desc="Inference"):
             # face_tensor is of shape [C, H, W]. Add a batch dimension:
-            input_face = face_tensor.unsqueeze(0).to(DEVICE)  # shape: [1, C, H, W]
+            input_face = face_tensor.to(DEVICE)  # shape: [1, C, H, W]
             
             # Our model expects a tuple: (None, None, input_tensor)
             features = (None, None, input_face)
@@ -47,12 +47,12 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
             meta = metadata[0] if isinstance(metadata, list) else metadata
             
             predictions.append({
-                "video_id": meta["video_id"],
-                "chunk_id": meta["chunk_id"],
-                "speaker_id": meta["speaker_id"],
-                "frame_idx": meta["frame_idx"],
+                "video_id": str(meta["video_id"]),
+                "chunk_id": str(meta["chunk_id"]),
+                "speaker_id": str(meta["speaker_id"]),
+                "frame_idx": int(meta["frame_idx"]),
                 "is_speaking_pred": is_speaking_pred,
-                "probability": prob.item()
+                "probability": float(prob.item()) 
             })
     
     # Save predictions to CSV
@@ -62,11 +62,11 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
 
 def main():
     # Define paths
-    test_data_dir = "Preprocessed_data"  # Adjust to your test preprocessed data directory
+    test_data_dir = "test_preprocessed"  # Adjust to your test preprocessed data directory
     checkpoint_path = Path("checkpoints", "best_visual.pth")  # or your desired checkpoint
     
     # Load the test dataset
-    test_dataset = SingleFrameTestDataset(root_dir=test_data_dir, transform=None)
+    test_dataset = TestDataset(root_dir=test_data_dir, transform=None)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     print(f"Test dataset size: {len(test_dataset)} samples")

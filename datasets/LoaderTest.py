@@ -83,9 +83,8 @@ def extract_audio_segment(mel_tensor: torch.Tensor, frame_idx: int, total_frames
             segment = torch.nn.functional.pad(segment, (0, pad_size))
         elif current_length > desired_length:
             segment = segment[:, :desired_length]
-    
     # Add channel dimension → [1, n_mels, desired_length]
-    segment = segment.squeeze()
+    # segment = segment.squeeze()
     return segment
 
 
@@ -191,6 +190,6 @@ class TestDataset(Dataset):
         full_mel_tensor = torch.from_numpy(full_mel_arr).float()
         # Extract the corresponding audio segment using our helper
         audio_segment = extract_audio_segment(full_mel_tensor, frame_idx, T, desired_length=22)
-        
+        # print(audio_segment.shape)
         label = float(sample["label"])
         return face_tensor, audio_segment, label, metadata
