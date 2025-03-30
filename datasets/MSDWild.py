@@ -229,37 +229,61 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 
 
 
-def extract_audio_segment(mel_tensor: torch.Tensor, frame_idx: int, total_frames: int) -> torch.Tensor:
+def extract_audio_segment(mel_tensor: torch.Tensor, frame_idx: int, total_frames: int, desired_length: int = 22) -> torch.Tensor:
     """
     Extracts a segment from the full mel spectrogram corresponding to the given frame.
     
-    Args:
-        mel_tensor: torch.Tensor of shape [n_mels, A] (full mel spectrogram for the chunk)
-        frame_idx: int, the current frame index (0-indexed)
-        total_frames: int, T, the total number of frames in the face track
-        
-    Returns:
-        A torch.Tensor of shape [n_mels, segment_length] representing the audio segment for that frame.
+    There are two cases:
+      1. If mel_tensor has shape [n_mels, desired_length, total_frames] (e.g. [30, 22, 20]),
+         then the last dimension indexes the video frames. In that case, simply select
+         the slice corresponding to frame_idx.
+      2. Otherwise, if mel_tensor has shape [n_mels, A], we do a proportional slice.
+         
+    Finally, the function adds an extra channel dimension so the output shape is [1, n_mels, desired_length].
     """
-    A = mel_tensor.shape[1]
-    start_idx = int(frame_idx * A / total_frames)
-    end_idx = int((frame_idx + 1) * A / total_frames)
-    if end_idx <= start_idx:
-        end_idx = start_idx + 1
-    return mel_tensor[:, start_idx:end_idx]
+    if mel_tensor.ndim == 3:
+        # Assume shape is [n_mels, desired_length, total_frames]
+        if frame_idx >= mel_tensor.shape[2]:
+            raise ValueError("frame_idx exceeds available frames in mel_tensor")
+        segment = mel_tensor[:, :, frame_idx]  # shape: [n_mels, desired_length]
+    else:
+        # Fallback: assume shape is [n_mels, A]
+        mel_tensor = mel_tensor.squeeze()  # now expected shape [n_mels, A]
+        if mel_tensor.ndim != 2:
+            raise ValueError(f"Expected mel_tensor to have 2 dimensions after squeeze, got {mel_tensor.shape}")
+        n_mels, A = mel_tensor.shape
+        start_idx = int(frame_idx * A / total_frames)
+        end_idx = int((frame_idx + 1) * A / total_frames)
+        if end_idx <= start_idx:
+            end_idx = start_idx + 1
+        segment = mel_tensor[:, start_idx:end_idx]
+        # Pad/truncate if needed to desired_length
+        current_length = segment.shape[1]
+        if current_length < desired_length:
+            pad_size = desired_length - current_length
+            segment = torch.nn.functional.pad(segment, (0, pad_size))
+        elif current_length > desired_length:
+            segment = segment[:, :desired_length]
+    
+    # Add channel dimension → [1, n_mels, desired_length]
+    segment = segment.squeeze()
+    return segment
+
 
 class TestDataset(Dataset):
     """
     Test dataset that loads individual face frames and their corresponding audio segments.
     
-    For each video (e.g., "01927") in the preprocessed directory, for each chunk folder
-    (e.g., "Chunk_1"), and for each face file (e.g., "face_2.npy"), this dataset:
-      - Loads the full face track from face file (shape [T, C, H, W])
-      - Loads the full mel spectrogram (from melspectrogram.npy)
-      - Reads the ground truth labels from is_speaking.csv (which has columns: face_id, frame_id, is_speaking)
-      - Creates one sample per frame:
-            (face_tensor, audio_segment, label, metadata)
-      - Metadata includes video_id, chunk_id, speaker_id, frame_idx, and total_frames (T)
+    For each chunk folder in a video directory, this dataset:
+      - Loads a face track (e.g., face_{speaker_id}.npy) of shape [T, C, H, W]
+      - Loads the full mel spectrogram (e.g., melspectrogram.npy) of shape (30, 22, 20)
+      - Reads the ground truth labels from is_speaking.csv (columns: face_id, frame_id, is_speaking)
+      
+    It then creates one sample per frame in the face track. Each sample returns:
+       face_tensor: a single frame (shape [C, H, W])
+       audio_segment: the corresponding audio segment for that frame (shape [1, 30, 22])
+       label: 0 or 1 for that frame
+       metadata: dict with video_id, chunk_id, speaker_id, frame_idx, total_frames (T)
     """
     def __init__(self, root_dir: str, transform=None):
         super().__init__()
@@ -267,22 +291,24 @@ class TestDataset(Dataset):
         self.transform = transform
         self.samples = []
        
+        # Iterate over each video folder
         for video_dir in sorted(self.root_dir.iterdir()):
             if not video_dir.is_dir():
                 continue
             video_id = video_dir.name
+            # For each chunk folder
             for chunk_dir in sorted(video_dir.iterdir()):
                 if not chunk_dir.is_dir() or not chunk_dir.name.startswith("Chunk_"):
                     continue
                 chunk_id = chunk_dir.name.split("_")[-1]
                 
-                # Path to the melspectrogram
+                # Path to the mel spectrogram
                 mel_path = chunk_dir / "melspectrogram.npy"
                 if not mel_path.exists():
                     print(f"Missing melspectrogram.npy in {chunk_dir}. Skipping chunk.")
                     continue
                 
-                # Load the CSV file for labels (is_speaking)
+                # Parse is_speaking.csv for labels (if exists)
                 csv_path = chunk_dir / "is_speaking.csv"
                 speak_map = {}
                 if csv_path.exists():
@@ -293,20 +319,22 @@ class TestDataset(Dataset):
                         is_spk = int(row["is_speaking"])
                         speak_map[(face_id, frame_id)] = is_spk
                 else:
-                    print(f"Warning: {csv_path} not found. Default labels to 0.")
+                    print(f"Warning: {csv_path} not found. Defaulting labels to 0.")
                 
-                # For each face file (we assume one face per speaker for this test dataset)
+                # For each face file (assume one face per speaker for testing)
                 for face_file in chunk_dir.glob("face_*.npy"):
+                    if "_bboxes" in face_file.name:
+                        continue
                     parts = face_file.stem.split("_")
                     if len(parts) < 2:
                         continue
                     speaker_id = int(parts[1])
                     
-                    # Load the face track once to get the number of frames (T)
+                    # Load the face track once to get T (total frames)
                     face_arr = np.load(str(face_file))  # shape: [T, C, H, W]
                     T = face_arr.shape[0]
                     
-                    # For each frame in the face track, create a separate sample
+                    # For each frame in the face track, create a sample
                     for frame_idx in range(T):
                         label = speak_map.get((speaker_id, frame_idx), 0)
                         metadata = {
@@ -332,7 +360,7 @@ class TestDataset(Dataset):
         frame_idx = metadata["frame_idx"]
         T = metadata["total_frames"]
         
-        # Load full face track and extract the corresponding frame
+        # Load the full face track and extract the specific frame
         face_arr = np.load(sample["face_path"])   # shape: [T, C, H, W]
         face_frame = face_arr[frame_idx]            # shape: [C, H, W]
         face_tensor = torch.from_numpy(face_frame).float()
@@ -340,10 +368,10 @@ class TestDataset(Dataset):
             face_tensor = self.transform(face_tensor)
         
         # Load the full mel spectrogram for the chunk
-        full_mel_arr = np.load(sample["mel_path"])  # shape: [n_mels, A]
+        full_mel_arr = np.load(sample["mel_path"])  # expected shape: (30, 22, 20)
         full_mel_tensor = torch.from_numpy(full_mel_arr).float()
-        # Extract the audio segment corresponding to the current frame
-        audio_segment = extract_audio_segment(full_mel_tensor, frame_idx, T)
+        # Extract the corresponding audio segment using our helper
+        audio_segment = extract_audio_segment(full_mel_tensor, frame_idx, T, desired_length=22)
         
         label = float(sample["label"])
         return face_tensor, audio_segment, label, metadata

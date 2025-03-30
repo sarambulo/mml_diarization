@@ -16,7 +16,7 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 0,7,True,2749,28
 1,7,True,2749,28
 0,8,True,2749,28
-1,8,False,2749,28
+1,8,True,2749,28
 0,9,True,2749,28
 1,9,True,2749,28
 0,10,True,2749,28

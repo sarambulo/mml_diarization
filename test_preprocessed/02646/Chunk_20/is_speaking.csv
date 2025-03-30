@@ -95,13 +95,13 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 3,15,True,2646,20
 8,15,False,2646,20
 4,15,False,2646,20
-0,16,False,2646,20
+0,16,True,2646,20
 1,16,True,2646,20
 7,16,False,2646,20
 3,16,False,2646,20
 8,16,False,2646,20
 4,16,False,2646,20
-0,17,False,2646,20
+0,17,True,2646,20
 1,17,True,2646,20
 7,17,False,2646,20
 3,17,True,2646,20

@@ -19,11 +19,11 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 1,8,True,2759,37
 0,9,True,2759,37
 1,9,True,2759,37
-0,10,False,2759,37
+0,10,True,2759,37
 1,10,True,2759,37
-0,11,False,2759,37
+0,11,True,2759,37
 1,11,True,2759,37
-0,12,False,2759,37
+0,12,True,2759,37
 1,12,True,2759,37
 0,13,True,2759,37
 1,13,True,2759,37
