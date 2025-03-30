@@ -93,6 +93,7 @@ class MSDWildChunks(Dataset):
         self.pairs_info = self.load_pairs_info(video_names=self.video_names)
         pairs = min(len(self.all_pairs), len(self.pairs_info))
         N = floor(pairs * subset)
+        print("Reducing number of pairs from", pairs, "to", N)
         self.paths_list = self.load_triplets_optimized(N=N)
         self.length = len(self.paths_list)
         print("Initialized Dataset with", self.length, "samples")
@@ -143,7 +144,7 @@ class MSDWildChunks(Dataset):
     def load_triplets_optimized(self, N: int):
         pairs_lst = list(self.pairs_info.items())
         random.shuffle(pairs_lst)
-        print("Reducing number of pairs to", N)
+        
         paths = []
         index = 0
         pbar = tqdm(total=N, desc="Loading Triplet Files")
@@ -169,7 +170,15 @@ class MSDWildChunks(Dataset):
             if audio_path not in self.all_pairs or visual_path not in self.all_pairs:
                 continue
 
-            paths.append((visual_path, audio_path, is_speaking))
+            try:
+                visual_data = s3_load_numpy(self.bucket, visual_path)
+                audio_data = s3_load_numpy(self.bucket, audio_path)
+            except Exception as e:
+                print("Could not find", audio_path, str(e))
+                continue
+
+
+            paths.append((visual_data, audio_data, is_speaking))
             pbar.update(1)
 
         pbar.close()
@@ -182,15 +191,7 @@ class MSDWildChunks(Dataset):
         """
         Returns a triplet of tensors.
         """
-        visual_path, audio_path, is_speaking = self.paths_list[index]
-
-        try:
-            visual_data = s3_load_numpy(self.bucket, visual_path)
-            audio_data = s3_load_numpy(self.bucket, audio_path)
-        except Exception as e:
-            print("Could not find", audio_path, str(e))
-            return None
-
+        visual_data, audio_data, is_speaking = self.paths_list[index]
         visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
         return visual_data, audio_data, is_speaking
 
