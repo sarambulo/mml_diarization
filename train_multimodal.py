@@ -92,11 +92,8 @@ def validate(model, val_loader, criterion, device):
             labels = batch["labels"].to(device)
 
             triplet_emb, logits = model.process_triplet(audio_data, video_data)
-            anchor_emb, pos_emb, neg_emb = (
-                triplet_emb[:, 0],
-                triplet_emb[:, 1],
-                triplet_emb[:, 2],
-            )
+            anchor_emb, pos_emb, neg_emb = (triplet_emb[:, 0], triplet_emb[:, 1],
+                triplet_emb[:, 2])
             # labels = labels.long()
             loss = criterion(anchor_emb, pos_emb, neg_emb, logits, labels)
             print(logits.shape)
