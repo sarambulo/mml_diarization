@@ -96,19 +96,22 @@ def find_overlap_conflicts(model_dirs, window_size=1.0, min_overlap=0.5):
     df = pd.DataFrame.from_records(results)
     return df.sort_values("score_variance", ascending=False)
 
+def main():
+    # Example usage
+    model_directories = [
+        "NEMO_rttms",
+        "pyannote_rttms",
+        "diaper_rttms",
+        "powerset_rttms",
+        "aws_transcribe_rttms",
+    ]
+    conflict_df = find_overlap_conflicts(model_directories)
+    top_conflicts = conflict_df.head(10)
 
-# Example usage
-model_directories = [
-    "NEMO_rttms",
-    "pyannote_rttms",
-    "diaper_rttms",
-    "powerset_rttms",
-    "aws_transcribe_rttms",
-]
-conflict_df = find_overlap_conflicts(model_directories)
-top_conflicts = conflict_df.head(10)
+    # Save results
+    top_conflicts.to_csv("overlap_conflicts.csv", index=False)
+    print("Top conflicting clips:")
+    print(top_conflicts)
 
-# Save results
-top_conflicts.to_csv("overlap_conflicts.csv", index=False)
-print("Top conflicting clips:")
-print(top_conflicts)
+if __name__=='__main__':
+    main()

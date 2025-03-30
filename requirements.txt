@@ -170,5 +170,6 @@ urllib3==2.3.0
 wandb==0.19.8
 wcwidth
 yarl==1.18.3
-zipp
-pytest
+zipp==3.21.0
+pytest==8.3.5
+intervaltree==3.1.0
