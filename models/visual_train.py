@@ -5,6 +5,7 @@ from MSDWild import MSDWildChunks
 import numpy as np
 from pathlib import Path
 import random
+from torchsummaryX import summary
 import torch
 import pandas as pd
 import torch.nn.functional as F
@@ -19,9 +20,11 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 @torch.no_grad()
 def get_metrics(logits, labels):
     pred_labels = torch.argmax(logits, dim=-1)
-    n = labels.shape[0]
-    n_correct = pred_labels[pred_labels==labels].shape[0]
-    accuracy = n_correct / n
+    # print(pred_labels)
+    # n = labels.shape[0]
+    # print(labels)
+    accuracy = (pred_labels == labels).float().mean()
+    # accuracy = n_correct / n
     return accuracy
 
 def save_model(model, metrics, epoch, path):
@@ -43,36 +46,48 @@ def train_epoch(model, dataloader, optimizer, criterion):
     for i, batch in enumerate(dataloader):
         visual_batch=batch[0]
         labels=batch[2]
-        print(visual_batch.shape)
-        print(len(labels))
-        batch_size, anchors, positive_pairs, negative_pairs = visual_batch
+        # print(visual_batch.shape)
+        # print(len(labels))
+        anchors   = visual_batch[:, 0, :, :, :]  # shape (B, 3, H, W)
+        positives = visual_batch[:, 1, :, :, :]  # shape (B, 3, H, W)
+        negatives = visual_batch[:, 2, :, :, :] 
         optimizer.zero_grad() # Zero gradients
-
-        # Join all inputs
         batch_size = labels.shape[0]
-        features = list(zip(anchors, positive_pairs, negative_pairs))
-        print((features[0]))
-        # feature: [(batch_size, ...), (batch_size, ...), (batch_size, ...)]
-        # send to cuda
-        for index, feature in enumerate(features):
-            features[index] = torch.concat(feature, dim=0).to(DEVICE)
-            # feature: (batch_size * 3, ...)
-        labels = labels.to(DEVICE)
-
+        # Join all inputs
+        
+        # features = list(zip(anchors, positive_pairs, negative_pairs))
+        # print(len(features))
+        # # feature: [(batch_size, ...), (batch_size, ...), (batch_size, ...)]
+        # # send to cuda
+        # for index, feature in enumerate(features):
+        #     features[index] = torch.concat(feature, dim=0).to(DEVICE)
+        #     # feature: (batch_size * 3, ...)
+        # anchors   = anchors.to(DEVICE)   # shape [B, 3, H, W]
+        # positives = positives.to(DEVICE) # shape [B, 3, H, W]
+        # negatives = negatives.to(DEVICE)
+        # labels = labels.to(DEVICE)
+        all_images = torch.cat([anchors, positives, negatives], dim=0).to(DEVICE)
+        # print(anchors.shape)
+        # print(positives.shape)
+        # print(negatives.shape)
         # forward
         with torch.amp.autocast(DEVICE):  # This implements mixed precision. Thats it!
-            embeddings, logits = model(features)
+            embeddings, logits = model((None, None,all_images))
             anchors        = embeddings[            :   batch_size]
             positive_pairs = embeddings[  batch_size: 2*batch_size]
             negative_pairs = embeddings[2*batch_size: 3*batch_size]
             logits         = logits[:batch_size]
+            probs = torch.sigmoid(logits)
+            pred_labels = (probs >= 0.5)
+            # print(logits)
             # Use the type of output depending on the loss function you want to use
-
-            loss = criterion(anchors, positive_pairs, negative_pairs, logits, labels)
+            labels=labels.float()
+            loss = criterion(anchors, positive_pairs, negative_pairs, probs, labels)
 
         loss.backward() # This is a replacement for loss.backward()
         optimizer.step() # This is a replacement for optimizer.step()
-
+        # print(logits)
+        # print(pred_labels)
         accuracy = get_metrics(logits, labels)
         avg_loss = (avg_loss * i + loss.item()) / (i + 1)
         avg_accuracy = (avg_accuracy * i + accuracy) / (i + 1)
@@ -98,7 +113,7 @@ val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_va
 
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=train_dataset.build_batch)
 val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
-print(train_dataset)
+# print(train_dataset)
 print(f"Dataset size: {len(train_dataset)}")
 
 for batch_idx, (visual_data, audio_data, is_speaking) in enumerate(train_loader):
@@ -111,6 +126,7 @@ for batch_idx, (visual_data, audio_data, is_speaking) in enumerate(train_loader)
     break
 
 model = VisualOnlyModel(embedding_dims=512, num_classes=2) 
+
 optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
 criterion = DiarizationLoss(0.5, 0.5)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

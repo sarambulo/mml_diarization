@@ -86,13 +86,14 @@ class VisualOnlyModel(torch.nn.Module):
    def __init__(self, embedding_dims, num_classes):
       super().__init__()
       self.visual_encoder = ResNet34(embedding_dims)
-      self.classifier = torch.nn.Linear(embedding_dims, num_classes)
+      self.classifier = torch.nn.Linear(embedding_dims, 1)
 
    def forward(self, features):
       X = features[2]
       embedding = self.visual_encoder(X)
-      active_speaker = self.classifier(embedding)
-      return embedding, active_speaker
+      logits = self.classifier(embedding)
+      logits = logits.squeeze(1)
+      return embedding, logits
 
    @torch.no_grad()
    def predict_frame(self, X):
