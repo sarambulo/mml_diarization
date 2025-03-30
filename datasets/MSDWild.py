@@ -88,7 +88,7 @@ class MSDWildChunks(Dataset):
       all_pairs = {}
 
       for video_id in video_names:
-        pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
+        pairs_csv_path = os.path.join("../preprocessed", video_id, "pairs.csv")
         if not os.path.isfile(pairs_csv_path):
             print(f"Warning: pairs.csv not found for video {video_id}")
             continue
