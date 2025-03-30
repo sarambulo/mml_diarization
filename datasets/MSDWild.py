@@ -47,14 +47,25 @@ import pandas as pd
 from typing import List, Dict, Tuple
 from math import floor
 import re
+from pairs.utils import list_s3_files, s3_load_numpy
+from tqdm import tqdm
+import s3fs
 
 IMG_WIDTH = 112
 IMG_HEIGHT = 112
 
+s3 = s3fs.S3FileSystem()
+
+def load_numpy(path):
+    with s3.open(path, 'rb') as f:
+        data = np.load(f)
+    return data
+
 
 class MSDWildChunks(Dataset):
-   def __init__(self, data_path: str, partition_path: str, subset: float = 1):
+   def __init__(self, data_path: str, partition_path: str, subset: float = 1, data_bucket=None):
       self.data_path = data_path
+      self.bucket = data_bucket
       self.subset = subset
       self.video_names = self.get_partition_video_ids(partition_path)
       self.pairs_info = self.load_pairs_info(video_names=self.video_names)
@@ -87,13 +98,20 @@ class MSDWildChunks(Dataset):
       # Concat all pairs.csv
       all_pairs = {}
 
-      for video_id in video_names:
+      for video_id in tqdm(video_names, desc="Loading Pair Metadata for Videos"):
         pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
-        if not os.path.isfile(pairs_csv_path):
-            print(f"Warning: pairs.csv not found for video {video_id}")
-            continue
+        if self.bucket:
+            pairs_csv_path = os.path.join("s3://" + self.bucket, self.data_path, video_id, "pairs.csv")
 
-        df = pd.read_csv(pairs_csv_path)
+        try:
+            
+            df = pd.read_csv(pairs_csv_path)
+            if df.empty:
+                raise Exception()
+            # print("Read", pairs_csv_path)
+        except Exception as e:
+            # print("Did not find", pairs_csv_path)
+            continue
 
         for _, row in df.iterrows():
             key = (
@@ -104,6 +122,7 @@ class MSDWildChunks(Dataset):
             )
             all_pairs[key] = int(row["is_speaking"])
 
+      print("Loaded metadata for", len(all_pairs), "pairs")
       return all_pairs
    
 
@@ -121,24 +140,29 @@ class MSDWildChunks(Dataset):
       triplets = []
       counter = 0
       # Videos
-      for video_path in Path(data_path).iterdir():
-         video_id = video_path.name
-         visual_triplets_paths = Path(video_path, 'visual_pairs')
+      for video_id in tqdm(self.video_names, desc="Loading Triplet Files"):
+         visual_triplets_path = os.path.join(self.data_path, video_id, 'visual_pairs')
          # Load visual data
-         for path in visual_triplets_paths.iterdir():
-            visual_data = np.load(str(path))
-            filename = path.name
+         for path in list_s3_files(self.bucket, visual_triplets_path):
+            # visual_data = load_numpy(os.path.join("s3://", self.bucket, path))
+            visual_data = s3_load_numpy(self.bucket, path)
+            filename = os.path.basename(path)
             match_result = visual_path_pattern.match(filename)
             if not match_result:
                raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
             chunk_id, speaker_id, frame_id = map(int, match_result.groups())
             # Look for corresponding melspectrogram
-            audio_path = Path(video_path, 'melspectrogram_audio_pairs', f"chunk{chunk_id}_frame{frame_id}_pair.npy")
-            audio_data = np.load(str(audio_path))
+            audio_path = os.path.join(self.data_path, video_id, 'melspectrogram_audio_pairs', f"chunk{chunk_id}_frame{frame_id}_pair.npy")
+            try:
+                # audio_data = load_numpy(os.path.join("s3://", self.bucket, audio_path))
+                audio_data = s3_load_numpy(self.bucket, audio_path)
+            except Exception as e:
+                # print("Could not find", audio_path)
+                continue
             visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
             if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
-               print(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
-               print('Skipping that triplet')
+               # print(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
+               # print('Skipping that triplet')
                continue
             is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
             triplets.append((visual_data, audio_data, is_speaking))

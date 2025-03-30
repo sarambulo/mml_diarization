@@ -9,7 +9,7 @@ from config import *
 
 def create_pairs() -> None:
     chunked_dirs = set([dir for dir, _ in get_speaking_csv_files_s3(S3_BUCKET_NAME, S3_VIDEO_DIR, S3_SPEAKING_CSV_NAME)])
-    video_ids = list(reversed(range(2250, 3144)))
+    video_ids = list(reversed(range(2250, 2251)))
     speaking_filename = "is_speaking.csv"
     for video_id in video_ids:
         video_id = str(video_id).zfill(5)
