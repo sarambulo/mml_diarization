@@ -13,12 +13,17 @@ from .VisualOnly import VisualOnlyModel
 from sklearn.cluster import AgglomerativeClustering
 from losses.DiarizationLoss import DiarizationLoss
 from tqdm import tqdm
+from torch.utils.data import Subset
 
 CHECKPOINT_PATH = 'checkpoints'
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+
+
 @torch.no_grad()
 def get_metrics(logits, labels):
+    print(logits)
+    print(labels)
     pred_labels = torch.argmax(logits, dim=-1)
     # print(pred_labels)
     # n = labels.shape[0]
@@ -35,7 +40,7 @@ def save_model(model, metrics, epoch, path):
     }
     torch.save(checkpoint, path)
 
-def train_epoch(model, dataloader, optimizer, criterion):
+def train_epoch(model, dataloader, optimizer, criterion, all_records):
     model.train()
 
     # Progress Bar
@@ -78,7 +83,7 @@ def train_epoch(model, dataloader, optimizer, criterion):
             negative_pairs = embeddings[2*batch_size: 3*batch_size]
             logits         = logits[:batch_size]
             probs = torch.sigmoid(logits)
-            pred_labels = (probs >= 0.5)
+            pred_labels = (probs >= 0.5).float()
             # print(logits)
             # Use the type of output depending on the loss function you want to use
             labels=labels.float()
@@ -88,9 +93,11 @@ def train_epoch(model, dataloader, optimizer, criterion):
         optimizer.step() # This is a replacement for optimizer.step()
         # print(logits)
         # print(pred_labels)
-        accuracy = get_metrics(logits, labels)
+        accuracy = get_metrics(pred_labels, labels)
+        # print(accuracy)
         avg_loss = (avg_loss * i + loss.item()) / (i + 1)
         avg_accuracy = (avg_accuracy * i + accuracy) / (i + 1)
+        
         # tqdm lets you add some details so you can monitor training as you train.
         batch_bar.set_postfix(
             acc   = "{:.04%} ({:.04%})".format(accuracy, avg_accuracy),
@@ -102,19 +109,94 @@ def train_epoch(model, dataloader, optimizer, criterion):
 
     batch_bar.close()
 
-    return accuracy, loss
+    return avg_accuracy*100, avg_loss
+
+
+@torch.no_grad()
+def evaluate_epoch(model, dataloader, criterion):
+    model.eval()
+
+    avg_loss = 0.0
+    avg_accuracy = 0.0
+    count = 0
+
+    for i, batch in enumerate(dataloader):
+        visual_batch = batch[0]
+        labels       = batch[2]
+
+        B = labels.shape[0]
+        anchors   = visual_batch[:, 0, :, :, :]  # (B, 3, H, W)
+        positives = visual_batch[:, 1, :, :, :]
+        negatives = visual_batch[:, 2, :, :, :]
+
+        all_images = torch.cat([anchors, positives, negatives], dim=0).to(DEVICE)
+
+        embeddings, logits = model((None, None, all_images))
+        
+        anchors_emb = embeddings[0:B]
+        pos_emb     = embeddings[B:2*B]
+        neg_emb     = embeddings[2*B:3*B]
+        logits      = logits[:B]
+        labels = labels.float().to(DEVICE)
+        probs = torch.sigmoid(logits)
+        loss = criterion(anchors_emb, pos_emb, neg_emb, probs, labels)
+
+        # Accuracy
+        accuracy = get_metrics(logits, labels)
+
+        # Running average
+        avg_loss = (avg_loss * i + loss.item()) / (i + 1)
+        avg_accuracy = (avg_accuracy * i + accuracy) / (i + 1)
+
+        count += 1
+
+    return avg_accuracy*100, avg_loss
 
 
 data_path = "preprocessed"
 partition_path_train = "data_sample/few_train.rttm"
 partition_path_val = "data_sample/few_train.rttm"
-train_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path_train, subset=1.0)
-val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_val, subset=1.0)
+# train_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path_train, subset=1.0)
+# val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_val, subset=1.0)
 
-train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=train_dataset.build_batch)
-val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
-# print(train_dataset)
-print(f"Dataset size: {len(train_dataset)}")
+# train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=train_dataset.build_batch)
+# val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
+
+
+full_dataset = MSDWildChunks(
+    data_path=data_path, 
+    partition_path=partition_path_train,  
+    subset=1.0
+)
+
+dataset_size = len(full_dataset)
+indices = list(range(dataset_size))
+random.shuffle(indices)
+
+# 80/20 split
+split = int(0.8 * dataset_size)
+train_indices = indices[:split]
+val_indices   = indices[split:]
+
+train_subset = Subset(full_dataset, train_indices)
+val_subset   = Subset(full_dataset, val_indices)
+
+train_loader = DataLoader(
+    train_subset,
+    batch_size=4,
+    shuffle=True,  # we can still shuffle
+    collate_fn=full_dataset.build_batch
+)
+
+val_loader = DataLoader(
+    val_subset,
+    batch_size=4,
+    shuffle=False,
+    collate_fn=full_dataset.build_batch
+)
+
+
+print(f"Train size: {len(train_subset)}   Val size: {len(val_subset)}")
 
 for batch_idx, (visual_data, audio_data, is_speaking) in enumerate(train_loader):
     print(f"\n--- Batch {batch_idx} ---")
@@ -148,12 +230,15 @@ for epoch in range(start_epoch, final_epoch):
             'train_loss': train_loss,
         })
         # validation
-        valid_acc, valid_loss = 0, 0 # TODO: evaluate_model(model, val_dataloader)
+        valid_acc, valid_loss = evaluate_epoch(model, val_loader, criterion)
         print("Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(valid_acc, valid_loss))
         metrics.update({
             'valid_cls_acc': valid_acc,
             'valid_loss': valid_loss,
         })
+        epoch_ckpt_path = Path(CHECKPOINT_PATH, f"epoch_{epoch+1}.pth")
+        save_model(model, metrics, epoch, epoch_ckpt_path)
+        print(f"Saved checkpoint for epoch {epoch+1}")
 
         # save best model
         if valid_acc >= best_valid_acc:
