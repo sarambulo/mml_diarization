@@ -1,0 +1,38 @@
+=== Average RMSE and Temporal metrics for each model ===
+Ground Truth - Turns: 14.27, Overlap: 0.1775, Coverage: 0.9338
+
+aws_transcribe_rttms:
+  RMSE: 0.5741
+  Speaker Turns: 6.88
+  Overlap Ratio: 0.0060
+  Temporal Coverage: 0.8816
+  Missed Speech (MS): 0.0950
+
+diaper_rttms:
+  RMSE: 0.6526
+  Speaker Turns: 15.17
+  Overlap Ratio: 0.1132
+  Temporal Coverage: 0.8494
+  Missed Speech (MS): 0.1288
+
+NEMO_output_rttms:
+  RMSE: 0.5476
+  Speaker Turns: 7.12
+  Overlap Ratio: 0.0212
+  Temporal Coverage: 0.9240
+  Missed Speech (MS): 0.0562
+
+powerset:
+  RMSE: 0.4441
+  Speaker Turns: 11.26
+  Overlap Ratio: 0.1387
+  Temporal Coverage: 0.9332
+  Missed Speech (MS): 0.0265
+
+pyannote_rttm_output/few_val:
+  RMSE: 0.4339
+  Speaker Turns: 11.97
+  Overlap Ratio: 0.1504
+  Temporal Coverage: 0.9353
+  Missed Speech (MS): 0.0237
+
