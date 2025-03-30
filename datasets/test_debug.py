@@ -21,8 +21,7 @@ def debug_test_loader(root_dir):
         print(f"  Audio segment shape: {audio_segment.shape}")  # Expected: [n_mels, segment_length]
         print(f"  Label: {label}")                              # 0 or 1
         print(f"  Metadata: {metadata}\n")                     # dict with video_id, chunk_id, speaker_id, frame_idx, total_frames
-        if i >= 2:  # Debug only first 3 samples
-            break
+        
 
 if __name__ == "__main__":
     # Replace "Preprocessed_data" with your actual directory path.
