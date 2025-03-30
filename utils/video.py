@@ -199,7 +199,9 @@ def extract_faces(
         # the frame_ids to index into video_frames by position
         frame = video_frames[i]
         if frame_id.item() not in bounding_boxes:
-            raise ValueError(f"Frame ID {frame_id} not present in bounding_boxes")
+            # raise ValueError(f"Frame ID {frame_id} not present in bounding_boxes")
+            print(f"skipped frame {frame_id}")
+            continue
         bounding_boxes_in_frame = bounding_boxes[frame_id.item()]
         for face_id in bounding_boxes_in_frame:
             # Crop face

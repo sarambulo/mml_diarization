@@ -55,7 +55,7 @@ def main():
         video_name = os.path.splitext(os.path.basename(video_file))[0]
         base_dir = os.path.join(args.output_path, video_name)
         os.makedirs(base_dir, exist_ok=True)
-
+        # print(bounding_boxes_path)
         # Generate the chunks
         chunks = build_chunks(
             video_path=video_file,
@@ -105,7 +105,7 @@ def main():
             final_speaking_df.to_csv(final_csv_path, index=False)
 
     end_time = time()
-    print(f"Created {chunk_index + 1} chunks across {video_counter + 1} videos in {end_time - start_time:.0f} seconds")
+    print(f"Created {chunk_index} chunks across {video_counter} videos in {end_time - start_time:.0f} seconds")
 
 if __name__ == "__main__":
     main()
