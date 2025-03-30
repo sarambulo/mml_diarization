@@ -1,4 +1,4 @@
-INPUT_DIR = "data/preprocessed"
+INPUT_DIR = "preprocessed"
 
 AUDIO_SAMPLE_DIFFERENT_SPEAKER_PROB = 0.7
 
