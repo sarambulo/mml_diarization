@@ -38,8 +38,8 @@ def debug_dataset(dataset, num_samples: int = 1):
             print(f"Sample: {type(sample)} - {sample}")
 
 
-data_path = "preprocessed"  # base directory
-partition_path = "data_sample/few_train.rttm"  # your rttm partition file
+data_path = "../preprocessed"  # base directory
+partition_path = "../data_sample/few_train.rttm"  # your rttm partition file
 
 dataset = MSDWildChunks(data_path=data_path, rttm_path=partition_path, subset=1.0)
 debug_dataset(dataset, num_samples=3)

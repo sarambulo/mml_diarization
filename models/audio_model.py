@@ -410,7 +410,7 @@ def train_with_diarization_loss(model, train_loader, val_loader, optimizer, devi
                 print(f"Batch {batch_idx}/{total_batches}: anchor shape={anchor.shape}")
             
             anchor, positive, negative, labels = anchor.to(device), positive.to(device), negative.to(device), labels.to(device)
-            
+
             # Forward pass through model
             anchor_embeddings, anchor_probs = model(anchor)
             positive_embeddings = model.encoder(positive)

@@ -17,7 +17,6 @@ class DiarizationLoss(torch.nn.Module):
         )
         return self.triplet_lambda * triplet_loss + self.bce_lambda * bce_loss
 
-
 # class DiarizationLoss(torch.nn.Module):
 #    def __init__(self, triplet_lambda, cross_entropy_lambda):
 #       super().__init__()

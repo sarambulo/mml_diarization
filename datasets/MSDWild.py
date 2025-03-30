@@ -34,6 +34,8 @@ the same video and correspond to the next segment where the anchor is not speaki
 another active speaker.
 """
 
+import re
+import torch
 import os
 import torch
 from torch.utils.data import Dataset
@@ -56,137 +58,253 @@ IMG_HEIGHT = 112
 
 
 class MSDWildChunks(Dataset):
-    def __init__(self, data_path: str, rttm_path: str, subset: float = 1):
+   def __init__(self, data_path: str, partition_path: str, subset: float = 1):
+      self.data_path = data_path
+      self.subset = subset
+      self.video_names = self.get_partition_video_ids(partition_path)
+      self.pairs_info = self.load_pairs_info(video_names=self.video_names)
+      N = floor(len(self.pairs_info) * subset)
+      self.triplets = self.load_triplets(data_path=data_path, pairs_info=self.pairs_info, N=N)
+      self.length = len(self.triplets)
+
+   def get_partition_video_ids(self, partition_path: str) -> List[str]:
+      """
+      Returns a list of video ID. For example: ['00001', '000002']
+      """
+      video_ids = set()
+      with open(partition_path, "r") as f:
+        for line in f:
+            parts = line.strip().split()
+            video_ids.add(parts[1])
+      return sorted(list(video_ids))
+
+
+   def load_pairs_info(self, video_names: List[str]) -> List[Dict]:
+      """
+      video names is the video ID, not the path
+      Returns: [
+         {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1 ,'frame_id': 2,},
+         {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1, 'frame_id': 2 }
+      ]
+      """
+      # For each video
+         # Load pairs.csv 
+      # Concat all pairs.csv
+      all_pairs = {}
+
+      for video_id in video_names:
+        pairs_csv_path = os.path.join("../preprocessed", video_id, "pairs.csv")
+        if not os.path.isfile(pairs_csv_path):
+            print(f"Warning: pairs.csv not found for video {video_id}")
+            continue
+
+        df = pd.read_csv(pairs_csv_path)
+
+        for _, row in df.iterrows():
+            key = (
+                video_id,
+                int(row["chunk_id"]),
+                int(row["frame_id"]),
+                int(row["speaker_id"])  # convert to string as requested
+            )
+            all_pairs[key] = int(row["is_speaking"])
+
+      return all_pairs
+   
+
+
+   def load_triplets(self, data_path: str, pairs_info: List[Dict], N: int) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
+      """
+      Loads all triplets stored within each video and chunk directory inside
+      `data_path`. Looks for that video, chunk, frame and speaker in `pairs_info`
+      to determine the value of `is_speaking` for the anchor
+
+      Return: 
+         List where each element is a Tuple = (visual_triplet_data, audio_triplet_data, is_speaking)
+      """
+      visual_path_pattern = re.compile(r'chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy')
+      triplets = []
+      counter = 0
+      # Videos
+      for video_path in Path(data_path).iterdir():
+         video_id = video_path.name
+         visual_triplets_paths = Path(video_path, 'visual_pairs')
+         # Load visual data
+         for path in visual_triplets_paths.iterdir():
+            visual_data = np.load(str(path))
+            filename = path.name
+            match_result = visual_path_pattern.match(filename)
+            if not match_result:
+               raise ValueError(f'Visual pair {filename} does not match pattern {visual_path_pattern.pattern}')
+            chunk_id, speaker_id, frame_id = map(int, match_result.groups())
+            # Look for corresponding melspectrogram
+            audio_path = Path(video_path, 'melspectrogram_audio_pairs', f"chunk{chunk_id}_frame{frame_id}_pair.npy")
+            audio_data = np.load(str(audio_path))
+            visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
+            if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
+               print(f'Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info')
+               print('Skipping that triplet')
+               continue
+            is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
+            triplets.append((visual_data, audio_data, is_speaking))
+            counter += 1
+            if counter >= N:
+               break
+      return triplets
+   def __len__(self):
+      return self.length
+   def __getitem__(self, index):
+      """
+      video_data: torch.Tensor of dim (3, C, H, W)
+      audio_data: torch.Tensor of dim (3, B, T)
+      is_speaking: int NOTE: This is only for the anchor
+      """
+      # Index anchor, positive and negative
+      triplet = self.triplets[index]
+      return triplet
+   def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
+      """
+      Returns a tuple
+      video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
+      """
+      # Extract each feature: do the zip thing
+      video_data, audio_data, is_speaking = list(zip(*batch_examples))
+      # Padding: NOTE: Not necessary
+      # Stack: 
+      video_data = torch.stack(video_data)
+      audio_data = torch.stack(audio_data)
+      is_speaking = torch.tensor(is_speaking)
+      # Return tuple((N, video_data, melspectrogram), (N, video_data, melspectrogram), (N, video_data, melspectrogram))
+      # (N, C, H, W), (N, Bands, T) x3 (ask Prachi)
+      return video_data, audio_data, is_speaking
+
+
+
+
+def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
+    """
+    Parse an RTTM file and return a dict:
+        { video_id: [(start, end, speaker_id), ...], ... }
+    """
+    intervals = {}
+    with open(rttm_path, "r") as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 8 or parts[0] != "SPEAKER":
+                continue
+            file_id    = parts[1]     # e.g. "00001"
+            start_time = float(parts[3])
+            duration   = float(parts[4])
+            speaker_id = parts[7]
+            end_time   = start_time + duration
+            if file_id not in intervals:
+                intervals[file_id] = []
+            intervals[file_id].append((start_time, end_time, speaker_id))
+
+    return intervals
+
+
+
+class TestDataLoader(Dataset):
+    """
+    A test-only dataset:
+    - Reads chunk-based preprocessed data from data_path/<video_id>/...
+    - Each chunk file is named e.g. "chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy"
+    - Optionally uses RTTM for ground-truth references. 
+    - Returns (visual_data, audio_data, metadata), where metadata has all info to rebuild an RTTM line.
+    """
+    def __init__(self, data_path: str, rttm_path: str = None):
+        super().__init__()
         self.data_path = data_path
-        self.subset = subset
-        self.video_names = self.get_partition_video_ids(rttm_path)
-        self.pairs_info = self.load_pairs_info(video_names=self.video_names)
-        N = floor(len(self.pairs_info) * subset)
-        self.triplets = self.load_triplets(
-            data_path=data_path, pairs_info=self.pairs_info, N=N
-        )
-        self.length = len(self.triplets)
+        
+        # 1) If you want ground-truth intervals from an RTTM file, parse them
+        self.intervals = {}
+        if rttm_path is not None and os.path.isfile(rttm_path):
+            self.intervals = parse_rttm(rttm_path)  # {video_id: [(start,end,spkid), ...]}
+        
+        # 2) Regex to match chunk/speaker/frame triple
+        self.file_pattern = re.compile(r'chunk(\d+)_speaker(\d+)_frame(\d+)_pair\.npy')
 
-    def get_partition_video_ids(self, partition_path: str) -> List[str]:
-        """
-        Returns a list of video ID. For example: ['00001', '000002']
-        """
-        video_ids = set()
-        with open(partition_path, "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                video_ids.add(parts[1])
-        return sorted(list(video_ids))
-
-    def load_pairs_info(self, video_names: List[str]) -> List[Dict]:
-        """
-        video names is the video ID, not the path
-        Returns: [
-           {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1 ,'frame_id': 2,},
-           {'video_id': 1, 'chunk_id': 1, 'speaker_id': 0, 'is_speaking': 1, 'frame_id': 2 }
-        ]
-        """
-        # For each video
-        # Load pairs.csv
-        # Concat all pairs.csv
-        all_pairs = {}
-
-        for video_id in video_names:
-            pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
-            if not os.path.isfile(pairs_csv_path):
-                print(f"Warning: pairs.csv not found for video {video_id}")
+        # We'll store a list of samples; each sample is a dict describing the chunk
+        self.samples = []
+        
+        # 3) Scan data_path
+        for video_dir in Path(data_path).iterdir():
+            if not video_dir.is_dir():
+                continue
+            video_id = video_dir.name  # e.g. "00001"
+            
+            # We'll look in "visual_pairs" folder or adapt as needed
+            visual_pairs_dir = video_dir / "visual_pairs"
+            if not visual_pairs_dir.exists():
+                print(f"No visual_pairs in {video_dir}")
                 continue
 
-            df = pd.read_csv(pairs_csv_path)
-
-            for _, row in df.iterrows():
-                key = (
-                    video_id,
-                    int(row["chunk_id"]),
-                    int(row["frame_id"]),
-                    int(row["speaker_id"]),  # convert to string as requested
-                )
-                all_pairs[key] = int(row["is_speaking"])
-
-        return all_pairs
-
-    def load_triplets(
-        self, data_path: str, pairs_info: List[Dict], N: int
-    ) -> List[Tuple[torch.Tensor, torch.Tensor, int]]:
-        """
-        Loads all triplets stored within each video and chunk directory inside
-        `data_path`. Looks for that video, chunk, frame and speaker in `pairs_info`
-        to determine the value of `is_speaking` for the anchor
-
-        Return:
-           List where each element is a Tuple = (visual_triplet_data, audio_triplet_data, is_speaking)
-        """
-        visual_path_pattern = re.compile(r"chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy")
-        triplets = []
-        counter = 0
-        # Videos
-        for video_path in Path(data_path).iterdir():
-            video_id = video_path.name
-            visual_triplets_paths = Path(video_path, "visual_pairs")
-            # Load visual data
-            for path in visual_triplets_paths.iterdir():
-                visual_data = np.load(str(path))
-                filename = path.name
-                match_result = visual_path_pattern.match(filename)
-                if not match_result:
-                    raise ValueError(
-                        f"Visual pair {filename} does not match pattern {visual_path_pattern.pattern}"
-                    )
-                chunk_id, speaker_id, frame_id = map(int, match_result.groups())
-                # Look for corresponding melspectrogram
-                audio_path = Path(
-                    video_path,
-                    "melspectrogram_audio_pairs",
-                    f"chunk{chunk_id}_frame{frame_id}_pair.npy",
-                )
-                audio_data = np.load(str(audio_path))
-                visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
-                if (video_id, chunk_id, frame_id, speaker_id) not in pairs_info:
-                    print(
-                        f"Missing info for {(video_id, chunk_id, frame_id, speaker_id)} in pairs_info"
-                    )
-                    print("Skipping that triplet")
+            # Iterate the files
+            for npy_file in visual_pairs_dir.glob("*.npy"):
+                filename = npy_file.name
+                match = self.file_pattern.match(filename)
+                if not match:
                     continue
-                is_speaking = pairs_info[(video_id, chunk_id, frame_id, speaker_id)]
-                triplets.append((visual_data, audio_data, is_speaking))
-                counter += 1
-                if counter >= N:
-                    break
-        return triplets
+                chunk_id_str, speaker_id_str, frame_id_str = match.groups()
+                chunk_id  = int(chunk_id_str)
+                speaker_id= int(speaker_id_str)
+                frame_id  = int(frame_id_str)
+
+                # Also find the audio file e.g. "melspectrogram_audio_pairs" if needed
+                audio_dir = video_dir / "melspectrogram_audio_pairs"
+                audio_file = audio_dir / f"chunk{chunk_id}_frame{frame_id}_pair.npy"
+                if not audio_file.exists():
+                    print(f"Missing audio file {audio_file}")
+                    continue
+
+                # For RTTM-based ground truth, you might want start_time or is_speaking. 
+                # If your chunk has a known start_time, you can store it in metadata. 
+                # For now, let's store the raw key in a dictionary
+                metadata = {
+                    "video_id": video_id,
+                    "chunk_id": chunk_id,
+                    "frame_id": frame_id,
+                    "speaker_id": speaker_id,
+                }
+
+                # If we want to store a ground truth "is_speaking" (0/1) from RTTM:
+                # we could do a mapping from intervals or pairs.csv. 
+                # For pure test, we might skip. Or if you want to do an offline eval, you can do:
+                # is_speaking = ???
+
+                sample = {
+                    "visual_npy": str(npy_file),
+                    "audio_npy":  str(audio_file),
+                    "metadata":   metadata
+                }
+                self.samples.append(sample)
+
+        # Sort or shuffle as needed
+        # e.g. self.samples.sort(key=lambda x: (x["metadata"]["video_id"], x["metadata"]["chunk_id"], ...))
 
     def __len__(self):
-        return self.length
+        return len(self.samples)
 
-    def __getitem__(self, index):
+    def __getitem__(self, idx):
         """
-        video_data: torch.Tensor of dim (3, C, H, W)
-        audio_data: torch.Tensor of dim (3, B, T)
-        is_speaking: int NOTE: This is only for the anchor
+        Returns a tuple: (visual_data, audio_data, metadata_dict)
+        where
+          visual_data: e.g. shape (3, C, H, W)
+          audio_data: e.g. shape (Time, ...) 
+          metadata_dict: { video_id, chunk_id, frame_id, speaker_id, etc.}
         """
-        # Index anchor, positive and negative
-        triplet = self.triplets[index]
-        return triplet
+        sample = self.samples[idx]
+        visual_data = np.load(sample["visual_npy"])     # shape e.g. (3, C, H, W)
+        audio_data  = np.load(sample["audio_npy"])      # shape e.g. (Freq, Time) if mel-spectrogram
+        # Convert to torch
+        visual_data = torch.from_numpy(visual_data)
+        audio_data  = torch.from_numpy(audio_data)
 
-    def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
-        """
-        Returns a tuple
-        video_data (N, 3, C, H, W), audio_data (N, 3, B, T), is_speaking (N,)
-        """
-        # Extract each feature: do the zip thing
-        video_data, audio_data, is_speaking = list(zip(*batch_examples))
-        # Padding: NOTE: Not necessary
-        # Stack:
-        video_data = torch.stack(video_data)
-        audio_data = torch.stack(audio_data)
-        is_speaking = torch.tensor(is_speaking)
-        # Return tuple((N, video_data, melspectrogram), (N, video_data, melspectrogram), (N, video_data, melspectrogram))
-        # (N, C, H, W), (N, Bands, T) x3 (ask Prachi)
-        return video_data, audio_data, is_speaking
+        metadata = sample["metadata"]
+        return (visual_data, audio_data, metadata)
+
+
 
 
 # class MSDWildBase(Dataset):

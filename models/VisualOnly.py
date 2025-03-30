@@ -2,6 +2,7 @@ from matplotlib.pylab import f
 import torch
 from sklearn.cluster import AgglomerativeClustering
 import numpy as np
+from losses.DiarizationLoss import DiarizationLoss
 
 
 class CNNBlock(torch.nn.Module):
@@ -86,13 +87,14 @@ class VisualOnlyModel(torch.nn.Module):
    def __init__(self, embedding_dims, num_classes):
       super().__init__()
       self.visual_encoder = ResNet34(embedding_dims)
-      self.classifier = torch.nn.Linear(embedding_dims, num_classes)
+      self.classifier = torch.nn.Linear(embedding_dims, 1)
 
    def forward(self, features):
       X = features[2]
       embedding = self.visual_encoder(X)
-      active_speaker = self.classifier(embedding)
-      return embedding, active_speaker
+      logits = self.classifier(embedding)
+      logits = logits.squeeze(1)
+      return embedding, logits
 
    @torch.no_grad()
    def predict_frame(self, X):
@@ -235,23 +237,23 @@ class VisualOnlyModel(torch.nn.Module):
    #    return utterances
    
    
-   # def utterances_to_rttm(self, utterances, file_id):
-   #    rttm_lines = []
-   #    if len(utterances) == 0:
-   #       return []
-   #    for speaker_id, speaker_utterances in utterances.items():
-   #       for utterance in speaker_utterances:
-   #             start_time = f"{utterance['start_time']:.6f}"
-   #             duration = f"{utterance['duration']:.6f}"
-   #             speaker = f"{speaker_id}"  
+#    def utterances_to_rttm(self, utterances, file_id):
+#       rttm_lines = []
+#       if len(utterances) == 0:
+#          return []
+#       for speaker_id, speaker_utterances in utterances.items():
+#          for utterance in speaker_utterances:
+#                start_time = f"{utterance['start_time']:.6f}"
+#                duration = f"{utterance['duration']:.6f}"
+#                speaker = f"{speaker_id}"  
                
-   #             rttm_line = f"SPEAKER {file_id:05d} {"0"} {start_time} {duration} {"NA"} {"NA"} {speaker} {"NA"} {"NA"}"
-   #             rttm_lines.append(rttm_line)
+#                rttm_line = f"SPEAKER {file_id:05d} {"0"} {start_time} {duration} {"NA"} {"NA"} {speaker} {"NA"} {"NA"}"
+#                rttm_lines.append(rttm_line)
       
-   #    #sort by start_time
-   #    rttm_lines.sort(key=lambda x: float(x.split()[3]))
+#       #sort by start_time
+#       rttm_lines.sort(key=lambda x: float(x.split()[3]))
       
-   #    return rttm_lines
+#       return rttm_lines
    
    
    # def predict_to_rttm_full(self, X, file_id):
