@@ -8,7 +8,7 @@ import sys
 import os
 import tqdm
 from models.VisualOnly import ResNet34
-from audio_train import AudioOnlyTDNN
+from models.audio_model import CompactAudioEmbedding
 
 
 ##get_audio_embedding, get_video_embedding need to be updated based on final unimodal implementation
@@ -27,7 +27,7 @@ class ConcatenationFusionModel(nn.Module):
     ):
         super(ConcatenationFusionModel, self).__init__()
         if audio_model is None:
-            self.audio_encoder = AudioOnlyTDNN(input_dim=40, hidden_dim=512)
+            self.audio_encoder = CompactAudioEmbedding(input_dim=40, embedding_dim=512, dropout_rate=0.3)
         else:
             self.audio_encoder = audio_model
         if visual_model is None:
@@ -68,17 +68,16 @@ class ConcatenationFusionModel(nn.Module):
         self.fusion_type = fusion_type
 
     def __call__(self, audio, video):
-        return self.process_triplet(audio, video)
+        return self.forward(audio, video)
 
     def get_audio_embedding(self, audio_input):
-        batch_size, num_bands, time_steps = audio_input.shape
-        return torch.rand((batch_size, 512))
+        return self.audio_encoder.forward(audio_input)
+        # batch_size, num_bands, time_steps = audio_input.shape
+        # return torch.rand((batch_size, 512))
 
     def get_video_embedding(self, visual_input):
-        batch_size, num_channels, width, height = visual_input.shape
-        return torch.rand((batch_size, 512))
-        x = self.visual_encoder.forward(visual_input)
-        return x
+        return self.visual_encoder.forward(visual_input)
+        # return torch.rand((batch_size, 512))
 
     def unfreeze_audio_encoder(self, unfreeze_all):
         if unfreeze_all:
@@ -153,14 +152,15 @@ class ConcatenationFusionModel(nn.Module):
 
         return audio_embedding, video_embedding, fusion_embedding, probability
 
-    def process_triplet(self, audio_data, visual_data):
-        anchor_v, pos_v, neg_v = visual_data[:, 0], visual_data[:, 1], visual_data[:, 2]
-        anchor_a, pos_a, neg_a = audio_data[:, 0], audio_data[:, 1], audio_data[:, 2]
+    # def process_triplet(self, audio_data, visual_data):
+    #     anchor_v, pos_v, neg_v = visual_data[:, 0], visual_data[:, 1], visual_data[:, 2]
+    #     anchor_a, pos_a, neg_a = audio_data[:, 0], audio_data[:, 1], audio_data[:, 2]
+        
 
-        _, _, anchor_emb, logits = self.forward(anchor_a, anchor_v)
+    #     _, _, anchor_emb, logits = self.forward(anchor_a, anchor_v)
 
-        pos_emb = self.forward(pos_a, pos_v)[2]
-        neg_emb = self.forward(neg_a, neg_v)[2]
+    #     pos_emb = self.forward(pos_a, pos_v)[2]
+    #     neg_emb = self.forward(neg_a, neg_v)[2]
 
-        triplet_emb = torch.stack([anchor_emb, pos_emb, neg_emb], dim=1)
-        return triplet_emb, logits.flatten()
+    #     triplet_emb = torch.stack([anchor_emb, pos_emb, neg_emb], dim=1)
+    #     return triplet_emb, logits.flatten()

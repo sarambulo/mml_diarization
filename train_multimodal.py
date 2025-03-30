@@ -11,7 +11,7 @@ import tqdm
 from losses.DiarizationLoss import DiarizationLoss
 from models.ConcatModel import ConcatenationFusionModel
 from models.VisualOnly import ResNet34
-from audio_train import AudioOnlyTDNN
+from models.audio_model import CompactAudioEmbedding
 from datasets.MSDWild import MSDWildChunks
 from torchinfo import summary
 
@@ -45,26 +45,35 @@ def train_epoch(model, train_loader, optimizer, criterion, device):
         if batch is None:
             continue
 
+        batch_size = batch["video_data"].shape[0]
         video_data = batch["video_data"].to(device)
         audio_data = batch["audio_data"].to(device)
         labels = batch["labels"].to(device)
-
-        triplet_emb, logits = model(audio_data, video_data)
-        anchor_emb, pos_emb, neg_emb = (
-            triplet_emb[:, 0],
-            triplet_emb[:, 1],
-            triplet_emb[:, 2],
-        )
+        
+        anchor_v, pos_v, neg_v = video_data[:, 0], video_data[:, 1], video_data[:, 2]
+        anchor_a, pos_a, neg_a = audio_data[:, 0], audio_data[:, 1], audio_data[:, 2]
+        
+        all_images  = torch.cat([anchor_v, pos_v, neg_v], dim=0).to(device)
+        all_audios  = torch.cat([anchor_a, pos_a, neg_a], dim=0).to(device)
+        
+        _, _, triplet_emb, triplet_probs = model(all_audios, all_images)
+        
+        anchor_emb = triplet_emb[:batch_size]
+        pos_emb = triplet_emb[batch_size: 2*batch_size]
+        neg_emb = triplet_emb[2*batch_size: 3*batch_size]
+        
+        probs = triplet_probs[:batch_size]
+       
         # labels = labels.long()
-        loss = criterion(anchor_emb, pos_emb, neg_emb, logits, labels)
+        loss = criterion(anchor_emb, pos_emb, neg_emb, probs, labels)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        predicted = (logits > 0.5).float()
-        print(logits.shape)
-        print(f"train_logits: {logits}")
+        predicted = (probs > 0.5).float().flatten()
+        print(probs.shape)
+        print(f"train_probs: {probs}")
         print(f"train_predicted: {predicted}")
         print(f"train_labels: {labels}")
         
@@ -90,17 +99,29 @@ def validate(model, val_loader, criterion, device):
             video_data = batch["video_data"].to(device)
             audio_data = batch["audio_data"].to(device)
             labels = batch["labels"].to(device)
+            
+            batch_size = video_data.shape[0]
+                        
+            anchor_v, pos_v, neg_v = video_data[:, 0], video_data[:, 1], video_data[:, 2]
+            anchor_a, pos_a, neg_a = audio_data[:, 0], audio_data[:, 1], audio_data[:, 2]
+            
+            all_images  = torch.cat([anchor_v, pos_v, neg_v], dim=0).to(device)
+            all_audios  = torch.cat([anchor_a, pos_a, neg_a], dim=0).to(device)
 
-            triplet_emb, logits = model.process_triplet(audio_data, video_data)
-            anchor_emb, pos_emb, neg_emb = (triplet_emb[:, 0], triplet_emb[:, 1],
-                triplet_emb[:, 2])
+            _, _, triplet_emb, triplet_probs = model(all_audios, all_images)
+        
+            anchor_emb = triplet_emb[:batch_size]
+            pos_emb = triplet_emb[batch_size: 2*batch_size]
+            neg_emb = triplet_emb[2*batch_size: 3*batch_size]
+            
+            probs = triplet_probs[:batch_size]
             # labels = labels.long()
-            loss = criterion(anchor_emb, pos_emb, neg_emb, logits, labels)
-            print(logits.shape)
-            predicted = (logits > 0.5).int()
-            print(f"val_logits: {logits}")
-            print(f"val_predicted: {predicted}")
-            print(f"val_labels: {labels}")
+            loss = criterion(anchor_emb, pos_emb, neg_emb, probs, labels)
+            # print(logits.shape)
+            predicted = (probs > 0.5).int().flatten()
+            # print(f"val_logits: {logits}")
+            # print(f"val_predicted: {predicted}")
+            # print(f"val_labels: {labels}")
             correct += (predicted == labels).sum().item()
             total += labels.size(0)
             epoch_loss += loss.item()
@@ -169,8 +190,8 @@ def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     ##LOAD CHECKPOINTS
-    # audio_model = AudioOnlyTDNN()
-    # audio_model.load_state_dict(torch.load("audio_tdnn_model.pth", map_location=DEVICE))
+    # audio_model = CompactAudioEmbedding()
+    # audio_model.load_state_dict(torch.load("audio_model.pth", map_location=DEVICE))
     # visual_model = ResNet34()
     # visual_model.load_state_dict(torch.load("visual_model.pth", map_location=DEVICE))
 
