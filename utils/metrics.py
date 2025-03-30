@@ -1,3 +1,4 @@
+from typing import Dict
 from .data import rttm_to_annotations
 from pyannote.metrics.diarization import (
     GreedyDiarizationErrorRate,

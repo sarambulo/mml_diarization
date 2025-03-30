@@ -1,5 +1,9 @@
 import os
 import pandas as pd
+from .data import rttm_to_annotations
+from pyannote.metrics.diarization import GreedyDiarizationErrorRate
+from typing import Dict
+from collections import defaultdict
 
 def get_rttm_labels(
     rttm_path: str,
@@ -86,3 +90,18 @@ def get_rttm_labels(
     # print(df)
 
     return df
+
+def greedy_speaker_matching(reference_rttm_path, predicted_rttm_path) -> Dict[str, str]:
+    """
+    Returns: Dictionary with predicted ID as keys and reference ID as
+    values
+    """
+    greedyDER = GreedyDiarizationErrorRate()
+    reference_annotation = rttm_to_annotations(reference_rttm_path)
+    reference_annotation = list(reference_annotation.values())[0] # Extract only value
+    predicted_annotation = rttm_to_annotations(predicted_rttm_path)
+    predicted_annotation = list(predicted_annotation.values())[0] # Extract only value
+    mapping = greedyDER.greedy_mapping(
+        reference=reference_annotation, hypothesis=predicted_annotation
+    )
+    return mapping
