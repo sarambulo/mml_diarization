@@ -23,6 +23,7 @@ class ConcatenationFusionModel(nn.Module):
         fusion_dim=512,
         embedding_dim=256,
         fusion_type="concat",
+        tensor_fusion_dim = 64
     ):
         super(ConcatenationFusionModel, self).__init__()
         if audio_model is None:
@@ -41,7 +42,10 @@ class ConcatenationFusionModel(nn.Module):
             input_dim = audio_dim + visual_dim
         elif fusion_type == "tensor":
             # UPDATE BASED ON ACTUAL TENSOR FUSION IMPLEMENTATION
-            input_dim = audio_dim * visual_dim
+            self.audio_projector = nn.Linear(audio_dim, tensor_fusion_dim)
+            self.visual_projector = nn.Linear(visual_dim, tensor_fusion_dim)
+            
+            input_dim = (tensor_fusion_dim + 1) * (tensor_fusion_dim + 1) #+ 1 for bias
         elif fusion_type == "additive":
             assert audio_dim == visual_dim
             input_dim = audio_dim
@@ -100,7 +104,24 @@ class ConcatenationFusionModel(nn.Module):
                     param.requires_grad = True
 
     def tensor_fusion(self, audio_emb, vis_emb):
-        pass
+        batch_size = vis_emb.size(0)
+        
+        projected_audio = self.audio_projector(audio_emb)
+        projected_visual = self.visual_projector(vis_emb)  
+        bias_ones = torch.ones(batch_size, 1) 
+        
+        #add ones for bias
+        audio_full_emb = torch.cat([bias_ones, projected_audio], dim=1)
+        vis_full_emb = torch.cat([bias_ones, projected_visual], dim=1)
+        
+        audio_full_emb = audio_full_emb.unsqueeze(2)  # (batch_size, audio_dim+1, 1)
+        vis_full_emb = vis_full_emb.unsqueeze(1)  # (batch_size, 1, visual_dim+1)
+        
+        #outerproduct by batch
+        fusion_tensor = torch.bmm(audio_full_emb, vis_full_emb)  # (batch_size, audio_dim+1, visual_dim+1)
+        fusion_vector = fusion_tensor.reshape(batch_size, -1) #flatten everything besides batch_size
+        
+        return fusion_vector
 
     def forward(self, audio_input, visual_input):
         audio_embedding = self.get_audio_embedding(audio_input)
@@ -111,8 +132,10 @@ class ConcatenationFusionModel(nn.Module):
             combined_embedding = torch.cat((audio_embedding, video_embedding), dim=1)
         elif self.fusion_type == "tensor":
             combined_embedding = self.tensor_fusion(audio_embedding, video_embedding)
+        elif self.fusion_type == "additive":
+            combined_embedding = audio_embedding + video_embedding
         else:
-            raise ValueError("choose 'concat' or 'tensor' for fusion type")
+            raise ValueError("choose 'concat', 'tensor', or 'additive' for fusion type")
 
         # fusion model
         fusion = self.fusion_linear(combined_embedding)
@@ -120,12 +143,13 @@ class ConcatenationFusionModel(nn.Module):
         fusion = self.dropout(fusion)
 
         fusion_embedding = self.fusion_embedding(fusion)
-        fusion_embedding = F.normalize(
-            fusion_embedding, p=2, dim=1
-        )  ### CHECK DIM BASED ON SHAPE
+        fusion_embedding = F.normalize(fusion_embedding, p=2, dim=1)
 
         # classification layer
-        probability = torch.sigmoid(self.classifier(fusion_embedding))
+        classfier_output = self.classifier(fusion_embedding)
+        # print(f"classfier_output: {classfier_output}")
+        probability = torch.sigmoid(classfier_output)
+        # print(f"Probability: {probability}")
 
         return audio_embedding, video_embedding, fusion_embedding, probability
 
@@ -139,4 +163,4 @@ class ConcatenationFusionModel(nn.Module):
         neg_emb = self.forward(neg_a, neg_v)[2]
 
         triplet_emb = torch.stack([anchor_emb, pos_emb, neg_emb], dim=1)
-        return triplet_emb, logits
+        return triplet_emb, logits.flatten()

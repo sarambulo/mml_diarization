@@ -62,9 +62,16 @@ def train_epoch(model, train_loader, optimizer, criterion, device):
         loss.backward()
         optimizer.step()
 
-        _, predicted = torch.max(logits, 1)
+        predicted = (logits > 0.5).float()
+        print(logits.shape)
+        print(f"train_logits: {logits}")
+        print(f"train_predicted: {predicted}")
+        print(f"train_labels: {labels}")
+        
         correct += (predicted == labels).sum().item()
+        print(f"correct: {correct}")
         total += labels.size(0)
+        print(f"total: {total}")
         epoch_loss += loss.item()
 
     epoch_loss = epoch_loss / len(train_loader)
@@ -92,7 +99,11 @@ def validate(model, val_loader, criterion, device):
             )
             # labels = labels.long()
             loss = criterion(anchor_emb, pos_emb, neg_emb, logits, labels)
-            _, predicted = torch.max(logits, 1)
+            print(logits.shape)
+            predicted = (logits > 0.5).int()
+            print(f"val_logits: {logits}")
+            print(f"val_predicted: {predicted}")
+            print(f"val_labels: {labels}")
             correct += (predicted == labels).sum().item()
             total += labels.size(0)
             epoch_loss += loss.item()
@@ -171,7 +182,7 @@ def main():
         visual_model=None,
         fusion_dim=512,
         embedding_dim=256,
-        fusion_type="concat",
+        fusion_type="tensor",
     ).to(DEVICE)
 
     train_rttm_path = "data_sample/all.rttm"
@@ -238,7 +249,7 @@ def main():
         criterion,
         scheduler,
         DEVICE,
-        num_epochs=5,
+        num_epochs=1,
         unfreeze_schedule=unfreeze_schedule,
     )
 
