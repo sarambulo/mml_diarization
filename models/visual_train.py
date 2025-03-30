@@ -5,7 +5,7 @@ from MSDWild import MSDWildChunks
 import numpy as np
 from pathlib import Path
 import random
-from torchsummaryX import summary
+# from torchsummaryX import summary
 import torch
 import pandas as pd
 import torch.nn.functional as F
