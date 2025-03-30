@@ -34,6 +34,9 @@ def calculate_metrics_for_video(preds: Annotation, targets: Annotation, der=None
 
     videoMetrics['Predicted Num Speakers'] = len(preds.labels())
     videoMetrics['Ground Truth Num Speakers'] = len(targets.labels())
+
+    # videoMetrics['Predicted Overlap Ratio'] = 0.2 # TODO
+    # videoMetrics['Ground Truth Overlap Ratio'] = 0.1 # TODO
     return videoMetrics
 
 
@@ -70,6 +73,11 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
         y_pred=df['Predicted Num Speakers'],
     )
 
+    # overlap_rmse = root_mean_squared_error(
+    #     y_true=df['Ground Truth Overlap Ratio'],
+    #     y_pred=df['Predicted Overlap Ratio'],
+    # )
+    
     metrics["DER"] = float(df.DER.mean())
     metrics["JER"] = float(df.JER.mean())
     metrics["MS"] = float(df.MS.mean())
