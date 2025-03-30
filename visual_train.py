@@ -9,11 +9,13 @@ from torchsummaryX import summary
 import torch
 import pandas as pd
 import torch.nn.functional as F
-from .VisualOnly import VisualOnlyModel
+from models.VisualOnly import VisualOnlyModel
 from sklearn.cluster import AgglomerativeClustering
 from losses.DiarizationLoss import DiarizationLoss
 from tqdm import tqdm
 from torch.utils.data import Subset
+from pairs.config import S3_BUCKET_NAME, S3_VIDEO_DIR
+
 
 CHECKPOINT_PATH = 'checkpoints'
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -22,8 +24,8 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 @torch.no_grad()
 def get_metrics(logits, labels):
-    print(logits)
-    print(labels)
+    # print(logits)
+    # print(labels)
     pred_labels = torch.argmax(logits, dim=-1)
     # print(pred_labels)
     # n = labels.shape[0]
@@ -40,7 +42,7 @@ def save_model(model, metrics, epoch, path):
     }
     torch.save(checkpoint, path)
 
-def train_epoch(model, dataloader, optimizer, criterion, all_records):
+def train_epoch(model, dataloader, optimizer, criterion):
     model.train()
 
     # Progress Bar
@@ -154,8 +156,8 @@ def evaluate_epoch(model, dataloader, criterion):
 
 
 data_path = "preprocessed"
-partition_path_train = "data_sample/few_train.rttm"
-partition_path_val = "data_sample/few_train.rttm"
+partition_path_train = "few.train.rttm"
+partition_path_val = "few.train.rttm"
 # train_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path_train, subset=1.0)
 # val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_val, subset=1.0)
 
@@ -163,11 +165,11 @@ partition_path_val = "data_sample/few_train.rttm"
 # val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
 
 
-full_dataset = MSDWildChunks(
-    data_path=data_path, 
-    partition_path=partition_path_train,  
-    subset=1.0
-)
+full_dataset = MSDWildChunks(data_path=S3_VIDEO_DIR,
+                        data_bucket=S3_BUCKET_NAME,
+                        partition_path=partition_path_train,
+                        subset=0.5,
+                        refresh_fileset=False)
 
 dataset_size = len(full_dataset)
 indices = list(range(dataset_size))
@@ -183,14 +185,14 @@ val_subset   = Subset(full_dataset, val_indices)
 
 train_loader = DataLoader(
     train_subset,
-    batch_size=4,
+    batch_size=64,
     shuffle=True,  # we can still shuffle
     collate_fn=full_dataset.build_batch
 )
 
 val_loader = DataLoader(
     val_subset,
-    batch_size=4,
+    batch_size=64,
     shuffle=False,
     collate_fn=full_dataset.build_batch
 )
