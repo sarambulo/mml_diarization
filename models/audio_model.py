@@ -2,7 +2,7 @@ import os
 import torch
 import torchaudio
 import torchaudio.transforms as AT
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -14,22 +14,23 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
 
 from datasets.MSDWild import MSDWildChunks
+from losses.DiarizationLoss import DiarizationLoss
 import torch.nn.functional as F
 
 from torchinfo import summary  
 
-class DiarizationLoss(nn.Module):
-    def __init__(self, triplet_lambda=0.7, bce_lambda=0.3):
-        super().__init__()
-        self.triplet_loss = nn.TripletMarginLoss(margin=0.5, p=2)
-        self.bce_loss = nn.BCEWithLogitsLoss()  # Using BCEWithLogitsLoss to handle logits directly
-        self.triplet_lambda = triplet_lambda
-        self.bce_lambda = bce_lambda
+# class DiarizationLoss(nn.Module):
+#     def __init__(self, triplet_lambda=0.7, bce_lambda=0.3):
+#         super().__init__()
+#         self.triplet_loss = nn.TripletMarginLoss(margin=0.5, p=2)
+#         self.bce_loss = nn.BCEWithLogitsLoss()  # Using BCEWithLogitsLoss to handle logits directly
+#         self.triplet_lambda = triplet_lambda
+#         self.bce_lambda = bce_lambda
         
-    def forward(self, anchors, positives, negatives, logits, labels):
-        triplet_loss = self.triplet_loss(anchors, positives, negatives)
-        bce_loss = self.bce_loss(logits, labels)
-        return self.triplet_lambda * triplet_loss + self.bce_lambda * bce_loss
+#     def forward(self, anchors, positives, negatives, logits, labels):
+#         triplet_loss = self.triplet_loss(anchors, positives, negatives)
+#         bce_loss = self.bce_loss(logits, labels)
+#         return self.triplet_lambda * triplet_loss + self.bce_lambda * bce_loss
 
 
 class AudioActiveSpeakerModel(nn.Module):
@@ -41,14 +42,15 @@ class AudioActiveSpeakerModel(nn.Module):
     def forward(self, x):
         embedding = self.encoder(x)
         logits = self.classifier(embedding)
-        return embedding, logits.squeeze(-1)  # Squeeze to get scalar output for binary classification
+        probs = torch.sigmoid(logits.squeeze(-1))
+        return embedding, probs  # Squeeze to get scalar output for binary classification
 
-    @torch.no_grad()
-    def predict_frame(self, x):
-        self.eval()
-        embedding, logits = self.forward(x)
-        probs = torch.sigmoid(logits)  # Convert logits to probabilities
-        return embedding, probs
+    # @torch.no_grad()
+    # def predict_frame(self, x):
+    #     self.eval()
+    #     embedding, logits = self.forward(x)
+    #     probs = torch.sigmoid(logits)  # Convert logits to probabilities
+    #     return embedding, probs
 
 
 # Modified AudioTripletDataset to include labels
@@ -330,9 +332,42 @@ def count_parameters(model):
     """Count the number of trainable parameters in a model"""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+def validate_model(model, criterion, val_loader, device):
+    epoch_loss = 0.0
+    correct = 0
+    total = 0
+    for batch in val_loader:
+        if batch is None:
+            continue
+        anchor, positive, negative, labels = batch
+        anchor, positive, negative, labels = anchor.to(device), positive.to(device), negative.to(device), labels.to(device)
+        with torch.no_grad():
+            anchor_embeddings, anchor_probs = model(anchor)
+            positive_embeddings = model.encoder(positive)
+            negative_embeddings = model.encoder(negative)
+
+            # Compute combined loss
+            loss = criterion(
+                anchor_embeddings, 
+                positive_embeddings, 
+                negative_embeddings, 
+                anchor_probs,
+                labels
+            )
+            anchor_preds = (anchor_probs > .5).int()
+            print(f"Validation Loss: {loss.item():.6f}")
+            correct += (anchor_preds == labels).sum().item()
+            total += labels.size(0)
+            epoch_loss += loss.item()
+    epoch_loss /= len(val_loader)
+    accuracy = correct / total
+    print(f"Validation Loss: {epoch_loss:.6f}, Accuracy: {accuracy:.2f}")
+    return epoch_loss, accuracy
+            
+    
 
 # Training function with DiarizationLoss
-def train_with_diarization_loss(model, train_loader, optimizer, device, triplet_lambda=0.7, bce_lambda=0.3, num_epochs=20):
+def train_with_diarization_loss(model, train_loader, val_loader, optimizer, device, triplet_lambda=0.7, bce_lambda=0.3, num_epochs=20):
     # Initialize the combined loss function
     criterion = DiarizationLoss(triplet_lambda=triplet_lambda, bce_lambda=bce_lambda)
     
@@ -377,7 +412,7 @@ def train_with_diarization_loss(model, train_loader, optimizer, device, triplet_
             anchor, positive, negative, labels = anchor.to(device), positive.to(device), negative.to(device), labels.to(device)
 
             # Forward pass through model
-            anchor_embeddings, anchor_logits = model(anchor)
+            anchor_embeddings, anchor_probs = model(anchor)
             positive_embeddings = model.encoder(positive)
             negative_embeddings = model.encoder(negative)
 
@@ -386,7 +421,7 @@ def train_with_diarization_loss(model, train_loader, optimizer, device, triplet_
                 anchor_embeddings, 
                 positive_embeddings, 
                 negative_embeddings, 
-                anchor_logits,
+                anchor_probs,
                 labels
             )
             
@@ -404,26 +439,28 @@ def train_with_diarization_loss(model, train_loader, optimizer, device, triplet_
             # Print occasional updates
             if batch_idx % 2 == 0:
                 print(f"  Batch {batch_idx}/{total_batches}, Loss: {loss.item():.6f}")
+        
 
+        val_loss, val_acc = validate_model(model, criterion, val_loader, device)
         # Calculate actual average loss based on batches processed
-        avg_loss = epoch_loss / max(batch_count, 1)  # Avoid division by zero
+        train_loss = epoch_loss / max(batch_count, 1)  # Avoid division by zero
         
         # Update learning rate scheduler based on epoch loss
-        scheduler.step(avg_loss)
+        scheduler.step(val_loss)
         
         # Print current learning rate
         current_lr = optimizer.param_groups[0]['lr']
         
-        print(f"Epoch {epoch+1}/{num_epochs}, Total Loss: {avg_loss:.6f}, LR: {current_lr:.6f}")
+        print(f"Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss:.6f}, Acc: {val_acc}, LR: {current_lr:.6f}")
         print(f"Processed {batch_count} batches, Skipped {skipped_batches} empty batches")
         print(f"Total triplets processed so far: {total_processed}")
         
         # Track best loss
-        if avg_loss < best_loss:
-            best_loss = avg_loss
+        if val_loss < best_loss:
+            best_loss = val_loss
             print(f"New best loss: {best_loss:.6f}")
             # Save best model
-            torch.save(model.state_dict(), 'best_diarization_model.pth')
+            torch.save(model.state_dict(), 'best_audio_model.pth')
             print("Saved best model")
         
         # Reset counter for next epoch
@@ -448,16 +485,35 @@ def main():
     msd_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_file, subset=1.0)
         
     # Create the audio dataset with labels
-    audio_dataset = AudioTripletDatasetWithLabels(msd_dataset)
-    sample = audio_dataset[0]
+    audio_dataset_full = AudioTripletDatasetWithLabels(msd_dataset)
+    sample = audio_dataset_full[0]
     if sample:
         anchor_mel, positive_mel, negative_mel, is_speaking = sample
         print("Anchor mel shape:", anchor_mel.shape)  # Should be [1, 40, 64]
         print("Is speaking:", is_speaking.item())
 
-    # Create data loader with the modified collate function
+    
+    
+    # split few_train into train + val
+    full_size = len(audio_dataset_full)
+    train_size = int(0.8 * full_size)
+    val_size = full_size - train_size
+
+    train_subset, val_subset = random_split(
+        audio_dataset_full,
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(69),
+    )
+    
     train_loader = DataLoader(
-        audio_dataset, 
+        train_subset, 
+        batch_size=64, 
+        shuffle=True, 
+        collate_fn=triplet_collate_fn_with_labels
+    )
+    
+    val_loader = DataLoader(
+        val_subset, 
         batch_size=64, 
         shuffle=True, 
         collate_fn=triplet_collate_fn_with_labels
@@ -491,6 +547,7 @@ def main():
     train_with_diarization_loss(
         model, 
         train_loader, 
+        val_loader,
         optimizer, 
         device,
         triplet_lambda=triplet_lambda,
