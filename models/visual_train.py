@@ -22,8 +22,8 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 @torch.no_grad()
 def get_metrics(logits, labels):
-    print(logits)
-    print(labels)
+    # print(logits)
+    # print(labels)
     pred_labels = torch.argmax(logits, dim=-1)
     # print(pred_labels)
     # n = labels.shape[0]
@@ -40,7 +40,7 @@ def save_model(model, metrics, epoch, path):
     }
     torch.save(checkpoint, path)
 
-def train_epoch(model, dataloader, optimizer, criterion, all_records):
+def train_epoch(model, dataloader, optimizer, criterion):
     model.train()
 
     # Progress Bar

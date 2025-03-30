@@ -40,13 +40,11 @@ import os
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
-
 # from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
 import random
 import torch
 import pandas as pd
-
 # import torchvision.transforms.v2 as ImageTransforms
 # import torchaudio.transforms as AudioTransforms
 from typing import List, Dict, Tuple
@@ -93,7 +91,7 @@ class MSDWildChunks(Dataset):
       all_pairs = {}
 
       for video_id in video_names:
-        pairs_csv_path = os.path.join("../preprocessed", video_id, "pairs.csv")
+        pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
         if not os.path.isfile(pairs_csv_path):
             print(f"Warning: pairs.csv not found for video {video_id}")
             continue
@@ -205,11 +203,112 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 
 
 
+class TestDataLoader(Dataset):
+    """
+    A test-only dataset:
+    - Reads chunk-based preprocessed data from data_path/<video_id>/...
+    - Each chunk file is named e.g. "chunk(\d+)_speaker(\d+)_frame(\d+)_pair.npy"
+    - Optionally uses RTTM for ground-truth references. 
+    - Returns (visual_data, audio_data, metadata), where metadata has all info to rebuild an RTTM line.
+    """
+    def __init__(self, data_path: str, rttm_path: str = None):
+        super().__init__()
+        self.data_path = data_path
+        
+        # 1) If you want ground-truth intervals from an RTTM file, parse them
+        self.intervals = {}
+        if rttm_path is not None and os.path.isfile(rttm_path):
+            self.intervals = parse_rttm(rttm_path)  # {video_id: [(start,end,spkid), ...]}
+        
+        # 2) Regex to match chunk/speaker/frame triple
+        self.file_pattern = re.compile(r'chunk(\d+)_speaker(\d+)_frame(\d+)_pair\.npy')
+
+        # We'll store a list of samples; each sample is a dict describing the chunk
+        self.samples = []
+        
+        # 3) Scan data_path
+        for video_dir in Path(data_path).iterdir():
+            if not video_dir.is_dir():
+                continue
+            video_id = video_dir.name  # e.g. "00001"
+            
+            # We'll look in "visual_pairs" folder or adapt as needed
+            visual_pairs_dir = video_dir / "visual_pairs"
+            if not visual_pairs_dir.exists():
+                print(f"No visual_pairs in {video_dir}")
+                continue
+
+            # Iterate the files
+            for npy_file in visual_pairs_dir.glob("*.npy"):
+                filename = npy_file.name
+                match = self.file_pattern.match(filename)
+                if not match:
+                    continue
+                chunk_id_str, speaker_id_str, frame_id_str = match.groups()
+                chunk_id  = int(chunk_id_str)
+                speaker_id= int(speaker_id_str)
+                frame_id  = int(frame_id_str)
+
+                # Also find the audio file e.g. "melspectrogram_audio_pairs" if needed
+                audio_dir = video_dir / "melspectrogram_audio_pairs"
+                audio_file = audio_dir / f"chunk{chunk_id}_frame{frame_id}_pair.npy"
+                if not audio_file.exists():
+                    print(f"Missing audio file {audio_file}")
+                    continue
+
+                # For RTTM-based ground truth, you might want start_time or is_speaking. 
+                # If your chunk has a known start_time, you can store it in metadata. 
+                # For now, let's store the raw key in a dictionary
+                metadata = {
+                    "video_id": video_id,
+                    "chunk_id": chunk_id,
+                    "frame_id": frame_id,
+                    "speaker_id": speaker_id,
+                }
+
+                # If we want to store a ground truth "is_speaking" (0/1) from RTTM:
+                # we could do a mapping from intervals or pairs.csv. 
+                # For pure test, we might skip. Or if you want to do an offline eval, you can do:
+                # is_speaking = ???
+
+                sample = {
+                    "visual_npy": str(npy_file),
+                    "audio_npy":  str(audio_file),
+                    "metadata":   metadata
+                }
+                self.samples.append(sample)
+
+        # Sort or shuffle as needed
+        # e.g. self.samples.sort(key=lambda x: (x["metadata"]["video_id"], x["metadata"]["chunk_id"], ...))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        """
+        Returns a tuple: (visual_data, audio_data, metadata_dict)
+        where
+          visual_data: e.g. shape (3, C, H, W)
+          audio_data: e.g. shape (Time, ...) 
+          metadata_dict: { video_id, chunk_id, frame_id, speaker_id, etc.}
+        """
+        sample = self.samples[idx]
+        visual_data = np.load(sample["visual_npy"])     # shape e.g. (3, C, H, W)
+        audio_data  = np.load(sample["audio_npy"])      # shape e.g. (Freq, Time) if mel-spectrogram
+        # Convert to torch
+        visual_data = torch.from_numpy(visual_data)
+        audio_data  = torch.from_numpy(audio_data)
+
+        metadata = sample["metadata"]
+        return (visual_data, audio_data, metadata)
+
+
+
 
 # class MSDWildBase(Dataset):
 #    def __init__(self, data_path: str, partition: str, subset: float = 1):
 #       """
-#       :param data_path str: path to the directory where the data is stored
+#       :param data_path str: path to the directory where the data is stored 
 #       :param partition str: few_train, few_val or many_val
 #       :param subset float: portion of the data to use, from 0 to 1
 #       """
@@ -259,7 +358,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 
 #       print(f"ERROR: Bounding boxes file {csv_path} not found!")
 #       return None
-
+   
 #    def __getitem__(self, index):
 #       video_name = self.video_names[int(index)]
 #       root = Path(self.data_path, 'msdwild_boundingbox_labels')
@@ -279,7 +378,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 # class MSDWildFrames(MSDWildBase):
 #    def __init__(self, data_path: str, partition: str, transforms = None, subset: float = 1):
 #       """
-#       :param data_path str: path to the directory where the data is stored
+#       :param data_path str: path to the directory where the data is stored 
 #       :param partition str: few_train, few_val or many_val
 #       """
 #       super().__init__(data_path, partition, subset)
@@ -310,10 +409,10 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #          transforms['face'] = image_transform
 #          transforms['audio_segment'] = lambda x: torch.mean(x, dim=-1)
 #          self.transforms = transforms
-
+        
 #    def __len__(self):
 #       return self.video_last_frame_id[-1]
-
+   
 #    def get_video_index(self, frame_id, start = 0, end = None):
 #       """
 #       Binary search over the last frame id for each video
@@ -342,7 +441,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #       # Search left
 #       else:
 #          return self.get_video_index(frame_id, start, mid_index - 1)
-
+   
 #    def get_frame_loc(self, frame_id):
 #       video_index = self.get_video_index(frame_id)
 #       # Edge case: First video
@@ -352,20 +451,20 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #       frame_offset = frame_id - first_frame_id
 #       frame_timestamp = frame_offset / self.video_fps[video_index].item()
 #       return video_index, frame_offset, frame_timestamp
-
+   
 #    def get_speakers_at_ts(self, data, timestamp) -> np.ndarray:
-#       time_intervals, speaker_ids = data
+#       time_intervals, speaker_ids = data  
 #       start_times = time_intervals[:,0]
 #       durations=time_intervals[:, 1]
 #       end_times = start_times+ durations
 #       active_speaker_ids = [speaker_ids[i] for i in range(len(start_times)) if start_times[i] <= timestamp < end_times[i]]
 #       if not active_speaker_ids:
 #         max_speaker_id = max(speaker_ids, default=0)  # Avoid error if speaker_ids is empty
-#         return torch.zeros(max_speaker_id + 1, dtype=int)
+#         return torch.zeros(max_speaker_id + 1, dtype=int)  
 #       max_speaker_id = max(speaker_ids)  # Get max speaker ID for array size
-#       speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)
+#       speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)  
 #       for speaker_id in active_speaker_ids:
-#          speaker_vector[speaker_id] = 1
+#          speaker_vector[speaker_id] = 1 
 #       return speaker_vector
 
 #    def extract_faces_from_frame(self, frame, bounding_boxes, frame_offset):
@@ -380,7 +479,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
 #          x1, y1, x2, y2 = max(x1, 0), max(y1, 0), max(x2, 0), max(y2, 0)
 #          if x2 > x1 and y2 > y1:
-#             cropped_faces[face_id] = frame[:, y1:y2, x1:x2]
+#             cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  
 #       return cropped_faces
 
 
@@ -390,7 +489,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #       # Edge case: first frame
 #       if frame_id == 0:
 #          start = 0
-#       else:
+#       else: 
 #          prev_file_id, prev_offset, prev_timestamp = self.get_frame_loc(frame_id - 1)
 #          # Case: first frame in video
 #          if prev_file_id != current_file_id:
@@ -407,7 +506,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #          end = (current_timestamp + next_timestamp) / 2
 #       audio_frames = read_audio(audio_stream, start, end)
 #       return audio_frames
-
+   
 #    def get_features(self, frame_id):
 #       file_id, frame_offset, frame_timestamp = self.get_frame_loc(frame_id)
 #       video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(file_id)
@@ -444,11 +543,11 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #             video_frame, audio_segment, labels, cropped_faces = self.get_features(candidate_frame)
 #       positive_sample = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
 #       return positive_sample
-
+   
 #    def get_negative_sample(self, file_id, face_id):
 #       if file_id is None:
 #          raise ValueError("file_id cannot be None")
-#       random_file_id = None
+#       random_file_id = None 
 #       while random_file_id == file_id:
 #          random_frame = random.randint(0, len(self) - 1)
 #       anchor, _ = self.get_features(random_frame)
@@ -465,14 +564,14 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #       anchor_speaker_id, negative_sample_speaker_id = face_ids[:2]
 #       anchor = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
 #       negative_pair = video_frame, audio_segment, cropped_faces[negative_sample_speaker_id]
-#       positive_pair = self.get_positive_sample(index, anchor_speaker_id)
+#       positive_pair = self.get_positive_sample(index, anchor_speaker_id) 
 #       # print(labels)
 #       # print(anchor_speaker_id)
-#       if anchor_speaker_id >= len(labels):
+#       if anchor_speaker_id >= len(labels):  
 #          anchor_speaker_id = 0
 #       label = labels[anchor_speaker_id]
 #       return anchor, positive_pair, negative_pair, label
-
+   
 #    def build_batch(self, batch_examples: list):
 #       # batch_examples: [(anchor1, pos1, neg1, label1), (anchor2, pos2, neg2, label2)]
 #       batch_examples = [ex for ex in batch_examples if ex is not None]
@@ -495,7 +594,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #          feature = [torch.tensor(sample) if sample is not None else torch.zeros(1) for sample in feature]
 #          feature = torch.nn.utils.rnn.pad_sequence(feature, batch_first=True)
 #          padded_features.append(feature)
-
+      
 #       padded_elements = []
 #       for i in range(3):
 #          element = []
@@ -508,7 +607,7 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 # class MSDWildVideos(MSDWildFrames):
 #    def __init__(self, data_path: str, partition: str, transforms, subset: float = 1, max_frames = 30):
 #       """
-#       :param data_path str: path to the directory where the data is stored
+#       :param data_path str: path to the directory where the data is stored 
 #       :param partition str: few_train, few_val or many_val
 #       """
 #       super().__init__(data_path, partition, transforms, subset)
@@ -546,3 +645,6 @@ def parse_rttm(rttm_path: str) -> Dict[str, List[Tuple[float, float, str]]]:
 #          all_faces.append(faces)
 #          all_timestamps.append(frame_timestamp)
 #       return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps, self.video_names[index]
+
+
+
