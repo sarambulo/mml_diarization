@@ -46,7 +46,7 @@ model_folders = [
     "diaper_rttms",
     "NEMO_output_rttms",
     "powerset",
-    "pyannote_rttm_output/few_val"
+    "pyannote_rttm_output"
 ]
 
 # Load and normalize GT RTTM

@@ -1,4 +1,4 @@
-from datasets.MSDWild import MSDWildFrames
+from datasets.MSDWild import MSDWildChunks
 import torch
 import torchaudio
 import torchaudio.transforms as AT

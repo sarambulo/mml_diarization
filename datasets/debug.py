@@ -4,6 +4,8 @@ import numpy as np
 import random
 import torch
 import pandas as pd
+
+
 # import torchvision.transforms.v2 as ImageTransforms
 def debug_dataset(dataset, num_samples: int = 1):
     """
@@ -25,7 +27,9 @@ def debug_dataset(dataset, num_samples: int = 1):
                 if isinstance(item, torch.Tensor):
                     print(f"Item {i}: Tensor of shape {item.shape}, dtype={item.dtype}")
                 elif isinstance(item, pd.DataFrame):
-                    print(f"Item {i}: DataFrame with shape {item.shape}, columns={item.columns.tolist()}")
+                    print(
+                        f"Item {i}: DataFrame with shape {item.shape}, columns={item.columns.tolist()}"
+                    )
                 elif isinstance(item, list):
                     print(f"Item {i}: List with length {len(item)}")
                 else:
@@ -37,5 +41,5 @@ def debug_dataset(dataset, num_samples: int = 1):
 data_path = "../preprocessed"  # base directory
 partition_path = "../data_sample/few_train.rttm"  # your rttm partition file
 
-dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path, subset=1.0)
+dataset = MSDWildChunks(data_path=data_path, rttm_path=partition_path, subset=1.0)
 debug_dataset(dataset, num_samples=3)

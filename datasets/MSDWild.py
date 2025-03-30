@@ -144,7 +144,7 @@ class MSDWildChunks(Dataset):
     def load_triplets_optimized(self, N: int):
         pairs_lst = list(self.pairs_info.items())
         random.shuffle(pairs_lst)
-        
+
         paths = []
         index = 0
         pbar = tqdm(total=N, desc="Loading Triplet Files")
@@ -176,7 +176,6 @@ class MSDWildChunks(Dataset):
             except Exception as e:
                 print("Could not find", audio_path, str(e))
                 continue
-
 
             paths.append((visual_data, audio_data, is_speaking))
             pbar.update(1)
