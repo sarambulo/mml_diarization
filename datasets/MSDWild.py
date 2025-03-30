@@ -40,11 +40,13 @@ import os
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
+
 # from .utils import get_streams, parse_rttm, read_audio, read_video
 import numpy as np
 import random
 import torch
 import pandas as pd
+
 # import torchvision.transforms.v2 as ImageTransforms
 # import torchaudio.transforms as AudioTransforms
 from typing import List, Dict, Tuple
@@ -308,7 +310,7 @@ class TestDataLoader(Dataset):
 # class MSDWildBase(Dataset):
 #    def __init__(self, data_path: str, partition: str, subset: float = 1):
 #       """
-#       :param data_path str: path to the directory where the data is stored 
+#       :param data_path str: path to the directory where the data is stored
 #       :param partition str: few_train, few_val or many_val
 #       :param subset float: portion of the data to use, from 0 to 1
 #       """
@@ -358,7 +360,7 @@ class TestDataLoader(Dataset):
 
 #       print(f"ERROR: Bounding boxes file {csv_path} not found!")
 #       return None
-   
+
 #    def __getitem__(self, index):
 #       video_name = self.video_names[int(index)]
 #       root = Path(self.data_path, 'msdwild_boundingbox_labels')
@@ -378,7 +380,7 @@ class TestDataLoader(Dataset):
 # class MSDWildFrames(MSDWildBase):
 #    def __init__(self, data_path: str, partition: str, transforms = None, subset: float = 1):
 #       """
-#       :param data_path str: path to the directory where the data is stored 
+#       :param data_path str: path to the directory where the data is stored
 #       :param partition str: few_train, few_val or many_val
 #       """
 #       super().__init__(data_path, partition, subset)
@@ -409,10 +411,10 @@ class TestDataLoader(Dataset):
 #          transforms['face'] = image_transform
 #          transforms['audio_segment'] = lambda x: torch.mean(x, dim=-1)
 #          self.transforms = transforms
-        
+
 #    def __len__(self):
 #       return self.video_last_frame_id[-1]
-   
+
 #    def get_video_index(self, frame_id, start = 0, end = None):
 #       """
 #       Binary search over the last frame id for each video
@@ -441,7 +443,7 @@ class TestDataLoader(Dataset):
 #       # Search left
 #       else:
 #          return self.get_video_index(frame_id, start, mid_index - 1)
-   
+
 #    def get_frame_loc(self, frame_id):
 #       video_index = self.get_video_index(frame_id)
 #       # Edge case: First video
@@ -451,20 +453,20 @@ class TestDataLoader(Dataset):
 #       frame_offset = frame_id - first_frame_id
 #       frame_timestamp = frame_offset / self.video_fps[video_index].item()
 #       return video_index, frame_offset, frame_timestamp
-   
+
 #    def get_speakers_at_ts(self, data, timestamp) -> np.ndarray:
-#       time_intervals, speaker_ids = data  
+#       time_intervals, speaker_ids = data
 #       start_times = time_intervals[:,0]
 #       durations=time_intervals[:, 1]
 #       end_times = start_times+ durations
 #       active_speaker_ids = [speaker_ids[i] for i in range(len(start_times)) if start_times[i] <= timestamp < end_times[i]]
 #       if not active_speaker_ids:
 #         max_speaker_id = max(speaker_ids, default=0)  # Avoid error if speaker_ids is empty
-#         return torch.zeros(max_speaker_id + 1, dtype=int)  
+#         return torch.zeros(max_speaker_id + 1, dtype=int)
 #       max_speaker_id = max(speaker_ids)  # Get max speaker ID for array size
-#       speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)  
+#       speaker_vector = torch.zeros(max_speaker_id + 1, dtype=int)
 #       for speaker_id in active_speaker_ids:
-#          speaker_vector[speaker_id] = 1 
+#          speaker_vector[speaker_id] = 1
 #       return speaker_vector
 
 #    def extract_faces_from_frame(self, frame, bounding_boxes, frame_offset):
@@ -479,7 +481,7 @@ class TestDataLoader(Dataset):
 #          x1, y1, x2, y2 = int(row["x1"]), int(row["y1"]), int(row["x2"]), int(row["y2"])
 #          x1, y1, x2, y2 = max(x1, 0), max(y1, 0), max(x2, 0), max(y2, 0)
 #          if x2 > x1 and y2 > y1:
-#             cropped_faces[face_id] = frame[:, y1:y2, x1:x2]  
+#             cropped_faces[face_id] = frame[:, y1:y2, x1:x2]
 #       return cropped_faces
 
 
@@ -489,7 +491,7 @@ class TestDataLoader(Dataset):
 #       # Edge case: first frame
 #       if frame_id == 0:
 #          start = 0
-#       else: 
+#       else:
 #          prev_file_id, prev_offset, prev_timestamp = self.get_frame_loc(frame_id - 1)
 #          # Case: first frame in video
 #          if prev_file_id != current_file_id:
@@ -506,7 +508,7 @@ class TestDataLoader(Dataset):
 #          end = (current_timestamp + next_timestamp) / 2
 #       audio_frames = read_audio(audio_stream, start, end)
 #       return audio_frames
-   
+
 #    def get_features(self, frame_id):
 #       file_id, frame_offset, frame_timestamp = self.get_frame_loc(frame_id)
 #       video_stream, audio_stream, labels, bounding_boxes = super().__getitem__(file_id)
@@ -543,11 +545,11 @@ class TestDataLoader(Dataset):
 #             video_frame, audio_segment, labels, cropped_faces = self.get_features(candidate_frame)
 #       positive_sample = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
 #       return positive_sample
-   
+
 #    def get_negative_sample(self, file_id, face_id):
 #       if file_id is None:
 #          raise ValueError("file_id cannot be None")
-#       random_file_id = None 
+#       random_file_id = None
 #       while random_file_id == file_id:
 #          random_frame = random.randint(0, len(self) - 1)
 #       anchor, _ = self.get_features(random_frame)
@@ -564,14 +566,14 @@ class TestDataLoader(Dataset):
 #       anchor_speaker_id, negative_sample_speaker_id = face_ids[:2]
 #       anchor = video_frame, audio_segment, cropped_faces[anchor_speaker_id]
 #       negative_pair = video_frame, audio_segment, cropped_faces[negative_sample_speaker_id]
-#       positive_pair = self.get_positive_sample(index, anchor_speaker_id) 
+#       positive_pair = self.get_positive_sample(index, anchor_speaker_id)
 #       # print(labels)
 #       # print(anchor_speaker_id)
-#       if anchor_speaker_id >= len(labels):  
+#       if anchor_speaker_id >= len(labels):
 #          anchor_speaker_id = 0
 #       label = labels[anchor_speaker_id]
 #       return anchor, positive_pair, negative_pair, label
-   
+
 #    def build_batch(self, batch_examples: list):
 #       # batch_examples: [(anchor1, pos1, neg1, label1), (anchor2, pos2, neg2, label2)]
 #       batch_examples = [ex for ex in batch_examples if ex is not None]
@@ -594,7 +596,7 @@ class TestDataLoader(Dataset):
 #          feature = [torch.tensor(sample) if sample is not None else torch.zeros(1) for sample in feature]
 #          feature = torch.nn.utils.rnn.pad_sequence(feature, batch_first=True)
 #          padded_features.append(feature)
-      
+
 #       padded_elements = []
 #       for i in range(3):
 #          element = []
@@ -607,7 +609,7 @@ class TestDataLoader(Dataset):
 # class MSDWildVideos(MSDWildFrames):
 #    def __init__(self, data_path: str, partition: str, transforms, subset: float = 1, max_frames = 30):
 #       """
-#       :param data_path str: path to the directory where the data is stored 
+#       :param data_path str: path to the directory where the data is stored
 #       :param partition str: few_train, few_val or many_val
 #       """
 #       super().__init__(data_path, partition, transforms, subset)
@@ -645,7 +647,3 @@ class TestDataLoader(Dataset):
 #          all_faces.append(faces)
 #          all_timestamps.append(frame_timestamp)
 #       return all_video_frames, all_audio_segments, all_labels, all_faces, all_timestamps, self.video_names[index]
-
-
-
-
