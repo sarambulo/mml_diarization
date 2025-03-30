@@ -15,7 +15,7 @@ def main():
                         help="Directory containing .mp4 videos and corresponding bounding box CSVs (e.g., 00001.mp4, 00001.csv, etc.).")
     parser.add_argument('-r', "--rttm_path", type=str, required=True,
                         help="Path to RTTM file.")
-    parser.add_argument('-o', "--output_path", type=str, default='preprocessed',
+    parser.add_argument('-o', "--output_path", type=str, default='test_preprocessed',
                     help="Path to the preprocessed output data.")
     parser.add_argument("--seconds", type=int, default=5,
                         help="Duration of each chunk in seconds.")
