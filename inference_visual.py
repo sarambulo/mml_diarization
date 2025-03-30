@@ -45,12 +45,16 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
             
             # Each metadata is a dict; since batch_size=1, extract the first element.
             meta = metadata[0] if isinstance(metadata, list) else metadata
+            video_id    = str(meta["video_id"][0])
+            chunk_id    = str(meta["chunk_id"][0])
+            speaker_id  = (meta["speaker_id"]).item()
+            frame_idx   = int(meta["frame_idx"]) 
             
             predictions.append({
-                "video_id": str(meta["video_id"]),
-                "chunk_id": str(meta["chunk_id"]),
-                "speaker_id": str(meta["speaker_id"]),
-                "frame_idx": int(meta["frame_idx"]),
+                "video_id": video_id,
+                "chunk_id": chunk_id,
+                "speaker_id": speaker_id,
+                "frame_idx": frame_idx,
                 "is_speaking_pred": is_speaking_pred,
                 "probability": float(prob.item()) 
             })
