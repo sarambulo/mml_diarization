@@ -1,17 +1,15 @@
 from typing import Dict
-from .data import rttm_to_annotations
+from utils.rttm import rttm_to_annotations
 from pyannote.metrics.diarization import (
     GreedyDiarizationErrorRate,
     JaccardErrorRate,
 )
 import pandas as pd
 import json
+from pyannote.core import Annotation
+from sklearn.metrics import root_mean_squared_error
 
-PATH_TO_PREDS = "aws_transcribe_rttms"
-PATH_TO_TARGETS = "data/few.val.rttm"
-
-
-def calculate_metrics_for_video(preds, targets, der=None, jer=None):
+def calculate_metrics_for_video(preds: Annotation, targets: Annotation, der=None, jer=None):
     if not der:
         der = GreedyDiarizationErrorRate()
     if not jer:
@@ -33,6 +31,9 @@ def calculate_metrics_for_video(preds, targets, der=None, jer=None):
     videoMetrics["FAR"] = der_detail["false alarm"] / der_detail["total"]
 
     videoMetrics["JER"] = jer(preds, targets)
+
+    videoMetrics['Predicted Num Speakers'] = len(preds.labels())
+    videoMetrics['Ground Truth Num Speakers'] = len(targets.labels())
     return videoMetrics
 
 
@@ -64,22 +65,20 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     df = pd.DataFrame.from_records(list(metricsByVideo.values()))
     metrics = {}
 
+    num_speakers_rmse = root_mean_squared_error(
+        y_true=df['Ground Truth Num Speakers'],
+        y_pred=df['Predicted Num Speakers'],
+    )
+
     metrics["DER"] = float(df.DER.mean())
     metrics["JER"] = float(df.JER.mean())
     metrics["MS"] = float(df.MS.mean())
-    metrics["MSR"] = float(df.MS.sum() / df.totalDuration.sum())
+    metrics["MSR"] = float(df.MSR.mean())
     metrics["FA"] = float(df.FA.mean())
-    metrics["FAR"] = float(df.FA.sum() / df.totalDuration.sum())
+    metrics["FAR"] = float(df.FAR.mean())
     metrics["SE"] = float(df.SE.mean())
-    metrics["SER"] = float(df.SE.sum() / df.totalDuration.sum())
-
-    # metrics["metricsByVideo"] = metricsByVideo
+    metrics["SER"] = float(df.SER.mean())
+    metrics["Duration"] = float(df['totalDuration'].mean())
+    metrics["Num Speakers RMSE"] = num_speakers_rmse
 
     return metrics
-
-
-if __name__ == "__main__":
-    preds = rttm_to_annotations(PATH_TO_PREDS)
-    targets = rttm_to_annotations(PATH_TO_TARGETS)
-    m = calculate_metrics_for_dataset(preds, targets)
-    print(json.dumps(m, indent=2))

@@ -1,9 +1,9 @@
 import os
 import pandas as pd
 from .data import rttm_to_annotations
-from pyannote.metrics.diarization import GreedyDiarizationErrorRate
+from pyannote.metrics.diarization import GreedyDiarizationErrorRate, JaccardErrorRate
 from typing import Dict
-from collections import defaultdict
+from pyannote.core import Annotation, Segment
 
 def get_rttm_labels(
     rttm_path: str,
@@ -105,3 +105,40 @@ def greedy_speaker_matching(reference_rttm_path, predicted_rttm_path) -> Dict[st
         reference=reference_annotation, hypothesis=predicted_annotation
     )
     return mapping
+
+def rttm_to_annotations(path) -> Dict[str, Annotation]:
+    """
+    Returns a dictionary with video ID as keys and Annotation as values
+    """
+    d = load_rttm_by_video(path)
+    annotations = {}
+    for videoId in d:
+        ann = Annotation()
+        for seg in d[videoId]:
+            ann[Segment(start=seg["startTime"], end=seg["endTime"])] = seg["speakerId"]
+        annotations[videoId] = ann
+    return annotations
+
+def load_rttm_by_video(path):
+    data = {}
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            fields = line.strip().split()
+            if len(fields) == 10 and fields[0] == "SPEAKER":
+                file_id, start, duration, speaker = (
+                    fields[1],
+                    float(fields[3]),
+                    float(fields[4]),
+                    fields[7],
+                )
+                if file_id not in data:
+                    data[file_id] = []
+                data[file_id].append(
+                    {
+                        "speakerId": speaker,
+                        "startTime": start,
+                        "endTime": start + duration,
+                        "duration": duration,
+                    }
+                )
+    return data
