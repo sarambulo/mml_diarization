@@ -11,6 +11,7 @@ def main():
     predictions_root_path = Path('predictions')
     predictions_dirs = {
         ground_truth_label: ground_truth_root_path,
+        "visual": predictions_root_path / "visual_rttms",
         'NEMO': predictions_root_path / "NEMO_rttms",
         'pyannote': predictions_root_path / "pyannote_rttms",
         'diaper': predictions_root_path / "diaper_rttms",
