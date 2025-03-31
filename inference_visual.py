@@ -33,7 +33,7 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
     where x is the face tensor with a batch dimension.
     """
 
-    os.makedirs('predictions', exist_ok=True)
+    os.makedirs('predictions/visual', exist_ok=True)
 
     # Dictionary to store predictions grouped by video_id
     predictions_by_video = defaultdict(list)
@@ -69,8 +69,8 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
     
     for video_id, records in predictions_by_video.items():
         df = pd.DataFrame(records)
-        filename = f"{video_id}_visual_inference.csv"
-        path = os.path.join('predictions', filename)
+        filename = f"{video_id}.csv"
+        path = os.path.join('predictions/visual', filename)
         df.to_csv(path, index=False)
         print(f"Saved predictions for video {video_id} to {path}")
 
