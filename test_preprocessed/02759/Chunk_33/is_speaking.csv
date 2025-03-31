@@ -1,7 +1,7 @@
 face_id,frame_id,is_speaking,video_id,chunk_id
-0,0,True,2759,33
-1,0,False,2759,33
-0,1,True,2759,33
+0,0,False,2759,33
+1,0,True,2759,33
+0,1,False,2759,33
 1,1,True,2759,33
 0,2,True,2759,33
 1,2,True,2759,33
@@ -10,8 +10,8 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 0,4,True,2759,33
 1,4,True,2759,33
 0,5,True,2759,33
-1,5,False,2759,33
-0,6,False,2759,33
+1,5,True,2759,33
+0,6,True,2759,33
 1,6,True,2759,33
 0,7,True,2759,33
 1,7,True,2759,33
@@ -32,6 +32,6 @@ face_id,frame_id,is_speaking,video_id,chunk_id
 0,15,True,2759,33
 1,15,True,2759,33
 0,16,True,2759,33
-1,16,False,2759,33
+1,16,True,2759,33
 0,17,True,2759,33
-1,17,False,2759,33
+1,17,True,2759,33

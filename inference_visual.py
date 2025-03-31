@@ -67,7 +67,7 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
 def main():
     # Define paths
     test_data_dir = "test_preprocessed"  # Adjust to your test preprocessed data directory
-    checkpoint_path = Path("checkpoints", "best_visual.pth")  # or your desired checkpoint
+    checkpoint_path = Path("checkpoints", "epoch_50.pth")  # or your desired checkpoint
     
     # Load the test dataset
     test_dataset = TestDataset(root_dir=test_data_dir, transform=None)

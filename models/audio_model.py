@@ -17,7 +17,7 @@ from datasets.MSDWild import MSDWildChunks
 from losses.DiarizationLoss import DiarizationLoss
 import torch.nn.functional as F
 
-from torchinfo import summary  
+# from torchinfo import summary  
 
 # class DiarizationLoss(nn.Module):
 #     def __init__(self, triplet_lambda=0.7, bce_lambda=0.3):
@@ -538,8 +538,8 @@ def main():
     # Optimizer with increased weight decay for regularization
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 
-    print("\nModel Summary:")
-    summary(model, input_size=(1, 1, 40, 64))  
+    # print("\nModel Summary:")
+    # summary(model, input_size=(1, 1, 40, 64))  
     
     # Train with the combined loss
     triplet_lambda = 0.7  # Weight for triplet loss
