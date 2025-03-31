@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 import sys
-sys.path.insert(0, 'datasets')
-from MSDWild import MSDWildChunks
+# sys.path.insert(0, 'datasets')
+from datasets.MSDWild import MSDWildChunks
 import numpy as np
 from pathlib import Path
 import random
