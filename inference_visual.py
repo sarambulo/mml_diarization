@@ -23,42 +23,48 @@ def load_model(checkpoint_path, embedding_dims=512):
     model.eval()
     return model
 
-def run_inference(model, test_loader, output_csv="predictions.csv"):
+def run_inference(model, test_loader, output_dir="predictions_per_video_visual"):
     """
-    Runs inference on the test_loader and saves predictions with metadata to a CSV file.
-    Each sample yields: (face_tensor, audio_segment, label, metadata).
-    The model is assumed to require a tuple input of the form (None, None, x),
-    where x is the face tensor with a batch dimension.
+    Runs inference and saves predictions in separate CSVs for each video_id.
     """
-    predictions = []
-    
+    from collections import defaultdict
+    import os
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Dictionary to store predictions grouped by video_id
+    predictions_by_video = defaultdict(list)
+
     with torch.no_grad():
         for face_tensor, audio_segment, label, metadata in tqdm(test_loader, desc="Inference"):
-            # face_tensor is of shape [C, H, W]. Add a batch dimension:
-            input_face = face_tensor.to(DEVICE)  # shape: [1, C, H, W]
-            
-            # Our model expects a tuple: (None, None, input_tensor)
+            input_face = face_tensor.to(DEVICE)  # [1, C, H, W]
             features = (None, None, input_face)
-            embedding, logits = model(features)  # logits: shape [1]
-            prob = torch.sigmoid(logits)         # probability in [0,1]
+            embedding, logits = model(features)
+            prob = torch.sigmoid(logits)
             is_speaking_pred = (prob >= 0.5).int().item()
-            
-            # Each metadata is a dict; since batch_size=1, extract the first element.
+
             meta = metadata[0] if isinstance(metadata, list) else metadata
-            
-            predictions.append({
-                "video_id": str(meta["video_id"]),
+            video_id = str(meta["video_id"][0]) if isinstance(meta["video_id"], list) else str(meta["video_id"])
+
+            prediction = {
+                "video_id": video_id,
                 "chunk_id": str(meta["chunk_id"]),
                 "speaker_id": str(meta["speaker_id"]),
                 "frame_idx": int(meta["frame_idx"]),
                 "is_speaking_pred": is_speaking_pred,
                 "probability": float(prob.item()) 
-            })
-    
-    # Save predictions to CSV
-    df = pd.DataFrame(predictions)
-    df.to_csv(output_csv, index=False)
-    print(f"Predictions saved to {output_csv}")
+            }
+
+            predictions_by_video[video_id].append(prediction)
+
+    for video_id, records in predictions_by_video.items():
+        df = pd.DataFrame(records)
+        filename = f"{video_id}_visual_inference.csv"
+        path = os.path.join(output_dir, filename)
+        df.to_csv(path, index=False)
+        print(f"Saved predictions for video {video_id} to {path}")
+
 
 def main():
     # Define paths
@@ -75,7 +81,7 @@ def main():
     model = load_model(checkpoint_path, embedding_dims=512)
     
     # Run inference and save predictions
-    run_inference(model, test_loader, output_csv="predictions.csv")
+    run_inference(model, test_loader, output_dir="predictions_per_video_visual")
 
 if __name__ == "__main__":
     main()
