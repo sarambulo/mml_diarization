@@ -3,6 +3,8 @@ import pandas as pd
 from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
+import os
+from collections import defaultdict
 # Replace with your actual imports, e.g.:
 # from your_dataset_module import SingleFrameTestDataset
 # from your_model_module import VisualOnlyModel
@@ -30,7 +32,12 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
     The model is assumed to require a tuple input of the form (None, None, x),
     where x is the face tensor with a batch dimension.
     """
-    predictions = []
+
+    os.makedirs('predictions', exist_ok=True)
+
+    # Dictionary to store predictions grouped by video_id
+    predictions_by_video = defaultdict(list)
+
     
     with torch.no_grad():
         for face_tensor, audio_segment, label, metadata in tqdm(test_loader, desc="Inference"):
@@ -50,19 +57,23 @@ def run_inference(model, test_loader, output_csv="predictions.csv"):
             speaker_id  = (meta["speaker_id"]).item()
             frame_idx   = int(meta["frame_idx"]) 
             
-            predictions.append({
+            prediction= {
                 "video_id": video_id,
                 "chunk_id": chunk_id,
                 "speaker_id": speaker_id,
                 "frame_idx": frame_idx,
                 "is_speaking_pred": is_speaking_pred,
                 "probability": float(prob.item()) 
-            })
+            }
+            predictions_by_video[video_id].append(prediction)
     
-    # Save predictions to CSV
-    df = pd.DataFrame(predictions)
-    df.to_csv(output_csv, index=False)
-    print(f"Predictions saved to {output_csv}")
+    for video_id, records in predictions_by_video.items():
+        df = pd.DataFrame(records)
+        filename = f"{video_id}_visual_inference.csv"
+        path = os.path.join('predictions', filename)
+        df.to_csv(path, index=False)
+        print(f"Saved predictions for video {video_id} to {path}")
+
 
 def main():
     # Define paths
