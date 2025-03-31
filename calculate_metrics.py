@@ -17,6 +17,10 @@ def main():
     root_predictions = Path(PATH_TO_PREDS)
     model_folders = {
         "visual": root_predictions / "visual_rttms",
+        "audio": root_predictions / "audio_rttms",
+        "MM Concat": root_predictions / "mm_concat_rttms",
+        "MM MatMul": root_predictions / "mm_tensor_rttms",
+        "MM Additive": root_predictions / "mm_additive_rttms",
         "AWS Transcribe": root_predictions / "aws_transcribe_rttms",
         "Diaper": root_predictions / "diaper_rttms",
         "NVIDIA NeMo": root_predictions / "NEMO_rttms",

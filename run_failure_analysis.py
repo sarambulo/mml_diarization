@@ -12,6 +12,10 @@ def main():
     predictions_dirs = {
         ground_truth_label: ground_truth_root_path,
         "visual": predictions_root_path / "visual_rttms",
+        "audio": predictions_root_path / "audio_rttms",
+        "mm_concat": predictions_root_path / "mm_concat_rttms",
+        "mm_tensor": predictions_root_path / "mm_tensor_rttms",
+        "mm_additive": predictions_root_path / "mm_additive_rttms",
         'NEMO': predictions_root_path / "NEMO_rttms",
         'pyannote': predictions_root_path / "pyannote_rttms",
         'diaper': predictions_root_path / "diaper_rttms",
