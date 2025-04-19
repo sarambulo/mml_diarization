@@ -1,205 +1,137 @@
-"""
-This script provides 2 sampling strategies, 2 video inputs and 2 label alternatives:
-
-Sampling strategies:
-1) Video and audio segments (possibly the entire video)
-2) Individual video frame and audio segment
-
-Video inputs:
-1) Complete images
-2) Cropped face
-
-Label alternatives:
-1) Is active speaker (boolean)
-2) Is the anchor the active speaker (boolean) + Triplets (anchor, positive pair, negative pair)
-
-The video and audio segments are used for recurrent models, the invididual
-video frames and audio segments for time insensitive models.
-
-The active speaker label is used for for active speaker detection (binary classification),
-and the triplets for diarization (active speaker detection + clustering).
-
-MSDWildBase is in charge of parsing the corresponding rttm file for a given dataset partition
-and identifyin each video and audio file in the data directory. Given a video ID, it returns
-the video and audio as streams, and the speaker IDs at the video frame rates.
-
-MSDWildFrames is in charge of identifying each video frame. For a given frame id, it returns the
-video frame, audio segment and speaker IDs (in plural because of possible overlap). Positive and
-negative pairs are extracted from the same video and correspond to the next frame where the anchor
-is not speaking and there is another active speaker.
-
-MSDWildVideos is in charge for extracting the corresponding sequence of frames for a time interval
-(context + target frame) or for the whole video. Positive and negative pairs are extracted from
-the same video and correspond to the next segment where the anchor is not speaking and there is
-another active speaker.
-"""
-
-import re
-import torch
-import os
+import boto3
+import io
+import numpy as np
+import json
+import numpy as np
 import torch
 from torch.utils.data import Dataset
-from pathlib import Path
-import numpy as np
-import random
-import pandas as pd
-from typing import List, Dict, Tuple
-from math import floor
-import re
-from pairs.utils import list_s3_files, s3_load_numpy
-from pairs.config import S3_BUCKET_NAME
+import os
 from tqdm import tqdm
-import s3fs
-import ast
-
-IMG_WIDTH = 112
-IMG_HEIGHT = 112
-
-s3 = s3fs.S3FileSystem()
 
 
-def load_numpy(path):
-    with s3.open(path, "rb") as f:
-        data = np.load(f)
-    return data
+def load_npz_from_s3(bucket: str, key: str):
+    """
+    Loads a .npz file from S3, unpacks arrays and metadata.
+
+    Args:
+        bucket (str): S3 bucket name (e.g. 'my-bucket')
+        key (str): S3 key to the .npz file (e.g. 'data/triplet_batch_00001.npz')
+
+    Returns:
+        dict: {
+            'visual_data': np.ndarray,
+            'audio_data': np.ndarray,
+            'is_speaking': np.ndarray,
+            'metadata': list[dict]  # if present
+        }
+    """
+    s3 = boto3.client("s3")
+    response = s3.get_object(Bucket=bucket, Key=key)
+    npz_bytes = io.BytesIO(response["Body"].read())
+    data = np.load(npz_bytes, allow_pickle=True)
+
+    result = {
+        "visual_data": data["visual_data"],
+        "audio_data": data["audio_data"],
+        "metadata": data["is_speaking"],
+    }
+
+    return result
 
 
-class MSDWildChunksOptimized(Dataset):
+class LazyNPZDataset(Dataset):
+    """
+    A PyTorch Dataset that lazily loads samples from multiple .npz files,
+    loading one file at a time into memory and optionally shuffling within-file.
+    """
+
     def __init__(
         self,
-        data_path: str,
-        partition_path: str,
-        subset: float = 1,
-        data_bucket=None,
-        refresh_fileset=False,
+        npz_dir: str,
+        num_batches: int,
+        batch_size: int,
+        bucket: str,
+        shuffle_within_file: bool = False,
     ):
-        if refresh_fileset:
-            all_files = list_s3_files(S3_BUCKET_NAME, data_path)
-            self.all_pairs = set([p for p in all_files if p.endswith("pair.npy")])
-            with open("pairs_files.txt", "w") as f:
-                f.write(str(self.all_pairs))
+        npz_file_paths = [
+            os.path.join(npz_dir, f"triplet_batch_{str(idx).zfill(5)}.npz")
+            for idx in range(num_batches)
+        ]
+        self.npz_file_paths = npz_file_paths
+        self.shuffle_within_file = shuffle_within_file
+        self.samples_per_file = batch_size
+        self.total_samples = self.samples_per_file * len(self.npz_file_paths)
+        self.bucket = bucket
 
-        with open("pairs_files.txt", "r") as f:
-            content = f.read()
-            self.all_pairs = (
-                set() if content == str(set()) else ast.literal_eval(content)
-            )
+        # State for current file cache
+        self._current_file_index = None
+        self._current_data = None
+        self._permutation = None
 
-        print("Directory has", len(self.all_pairs), "pairs")
-        self.data_path = data_path
-        self.bucket = data_bucket
-        self.subset = subset
-        self.video_names = self.get_partition_video_ids(partition_path)
-        self.pairs_info = self.load_pairs_info(video_names=self.video_names)
-        pairs = min(len(self.all_pairs), len(self.pairs_info))
-        N = floor(pairs * subset)
-        print("Reducing number of pairs from", pairs, "to", N)
-        self.paths_list = self.load_triplets_optimized(N=N)
-        self.length = len(self.paths_list)
-        print("Initialized Dataset with", self.length, "samples")
+    def __len__(self):
+        return self.total_samples
 
-    def get_partition_video_ids(self, partition_path: str) -> List[str]:
-        """
-        Returns a list of video ID. For example: ['00001', '000002']
-        """
-        video_ids = set()
-        with open(partition_path, "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                video_ids.add(parts[1])
-        return sorted(list(video_ids))
+    def __getitem__(self, idx: int):
+        # Determine which .npz file and local index
+        file_idx = idx // self.samples_per_file
+        local_idx = idx % self.samples_per_file
 
-    def load_pairs_info(self, video_names: List[str]) -> Dict:
-        """
-        Returns a dictionary with pair metadata.
-        """
-        all_pairs = {}
+        # Load file if not already cached
+        if file_idx != self._current_file_index:
+            self._load_file(file_idx)
 
-        for video_id in tqdm(video_names, desc="Loading Pair Metadata for Videos"):
-            pairs_csv_path = os.path.join("preprocessed", video_id, "pairs.csv")
-            if self.bucket:
-                pairs_csv_path = os.path.join(
-                    "s3://" + self.bucket, self.data_path, video_id, "pairs.csv"
-                )
+        # Apply in-file shuffle if requested
+        if self.shuffle_within_file:
+            local_idx = int(self._permutation[local_idx])
 
-            try:
-                df = pd.read_csv(pairs_csv_path)
-                if df.empty:
-                    raise Exception()
-            except Exception:
-                continue
+        visual = torch.tensor(self._current_data["visual_data"][local_idx])
+        audio = torch.tensor(self._current_data["audio_data"][local_idx])
+        label = int(self._current_data["metadata"][local_idx]["is_speaking"])
+        return visual, audio, label
 
-            for _, row in df.iterrows():
-                key = (
-                    video_id,
-                    int(row["chunk_id"]),
-                    int(row["frame_id"]),
-                    int(row["speaker_id"]),
-                )
-                all_pairs[key] = int(row["is_speaking"])
+    def _load_file(self, file_idx: int):
+        # Load and cache the .npz file
+        self._current_data = load_npz_from_s3(bucket=self.bucket, key=self.npz_file_paths[file_idx])
+        self._current_file_index = file_idx
+        if self.shuffle_within_file:
+            self._permutation = np.random.permutation(self.samples_per_file)
 
-        print("Loaded metadata for", len(all_pairs), "pairs")
-        return all_pairs
 
-    def load_triplets_optimized(self, N: int):
-        pairs_lst = list(self.pairs_info.items())
-        random.shuffle(pairs_lst)
+class UpfrontNPZDataset(Dataset):
+    """
+    A PyTorch Dataset that loads all samples from multiple .npz files into memory
+    at initialization. Best for smaller datasets or when you have enough RAM.
+    """
 
-        paths = []
-        index = 0
-        pbar = tqdm(total=N, desc="Loading Triplet Files")
-        while len(paths) < N and index < len(pairs_lst):
-            (video_id, chunk_id, frame_id, speaker_id), is_speaking = pairs_lst[index]
-            index += 1
-            if frame_id % 4 != 0:
-                continue
+    def __init__(
+        self,
+        npz_dir: str,
+        num_batches: int,
+        batch_size: int,
+        bucket: str,
+    ):
+        self.samples = []
+        # Load all files up front
+        npz_file_paths = [
+            os.path.join(npz_dir, f"triplet_batch_{str(idx).zfill(5)}.npz")
+            for idx in range(num_batches)
+        ]
+        for i, path in enumerate(npz_file_paths):
+            print(bucket, path)
+            data = load_npz_from_s3(bucket=bucket, key=path)
+            visuals = data["visual_data"]
+            audios = data["audio_data"]
+            labels = data["metadata"]
+            for i in tqdm(range(len(labels)), desc=f"Unpacking batch {i}"):
+                video = torch.tensor(visuals[i])
+                audio = torch.tensor(audios[i])
+                label = int(labels[i]["is_speaking"])
+                self.samples.append((video, audio, label))
 
-            visual_path = os.path.join(
-                self.data_path,
-                video_id,
-                "visual_pairs",
-                f"chunk{chunk_id}_speaker{speaker_id}_frame{frame_id}_pair.npy",
-            )
-            audio_path = os.path.join(
-                self.data_path,
-                video_id,
-                "melspectrogram_audio_pairs",
-                f"chunk{chunk_id}_frame{frame_id}_pair.npy",
-            )
-
-            if audio_path not in self.all_pairs or visual_path not in self.all_pairs:
-                continue
-
-            try:
-                visual_data = s3_load_numpy(self.bucket, visual_path)
-                audio_data = s3_load_numpy(self.bucket, audio_path)
-            except Exception as e:
-                print("Could not find", audio_path, str(e))
-                continue
-
-            paths.append((visual_data, audio_data, is_speaking))
-            pbar.update(1)
-
-        pbar.close()
-        return paths
+        self.length = len(self.samples)
 
     def __len__(self):
         return self.length
 
-    def __getitem__(self, index):
-        """
-        Returns a triplet of tensors.
-        """
-        visual_data, audio_data, is_speaking = self.paths_list[index]
-        visual_data, audio_data = map(torch.tensor, (visual_data, audio_data))
-        return visual_data, audio_data, is_speaking
-
-    def build_batch(self, batch_examples: List[Tuple[torch.Tensor, torch.Tensor, int]]):
-        """
-        Returns a batch of tensors.
-        """
-        video_data, audio_data, is_speaking = list(zip(*batch_examples))
-        video_data = torch.stack(video_data)
-        audio_data = torch.stack(audio_data)
-        is_speaking = torch.tensor(is_speaking)
-        return video_data, audio_data, is_speaking
+    def __getitem__(self, idx: int):
+        return self.samples[idx]
