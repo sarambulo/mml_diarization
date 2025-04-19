@@ -84,7 +84,7 @@ class ResNet34(torch.nn.Module):
       return self.model(X)
    
 class VisualSpeakerEncoder(torch.nn.Module):
-   def __init__(self, embedding_dims, weights_path: str = 'models/visual_encoder.pth'):
+   def __init__(self, embedding_dims:int = 1024, weights_path: str = 'models/visual_encoder.pth'):
       super().__init__()
       self.backbone = ResNet34(embedding_dims)
       if weights_path:
