@@ -4,6 +4,9 @@ from .data import rttm_to_annotations
 from pyannote.metrics.diarization import GreedyDiarizationErrorRate, JaccardErrorRate
 from typing import Dict
 from pyannote.core import Annotation, Segment
+from pathlib import Path
+
+FRAME_DURATION = 0.25  # seconds per frame
 
 
 def get_rttm_labels(
@@ -149,3 +152,53 @@ def load_rttm_by_video(path):
                     }
                 )
     return data
+
+
+def csv_to_rttm(csv_path: str, output_rttm_path: str) -> None:
+    if not Path(csv_path).exists():
+        raise FileExistsError(f"File {csv_path} does not exist")
+    data = pd.read_csv(csv_path)
+    data = data.rename(columns={
+        'is_speaking_pred': 'Speaking',
+        'speaker_id': 'Speaker ID',
+        'video_id': 'Video ID',
+        'frame_idx': 'Frame Offset',
+        'chunk_id': 'Chunk ID',
+    })
+    data['Timestamp'] = (data['Frame Offset'] + data['Chunk ID'] * 5) * FRAME_DURATION
+    video_id = data['Video ID'][0]
+    data = data.sort_values(['Speaker ID', 'Timestamp'])
+    data['Interval Flag'] = (data['Speaking'] == 1) & (data.groupby('Speaker ID')['Speaking'].shift(1, fill_value=0) == 0)
+    data['Interval ID'] = data.groupby('Speaker ID')['Interval Flag'].cumsum()
+    data = data[data['Speaking'] == 1]
+    data = data.groupby(['Speaker ID', 'Interval ID']).agg(**{
+        'Start': ('Timestamp', lambda x: x.min()),
+        'End': ('Timestamp', lambda x: x.max() + FRAME_DURATION),
+    })
+    data = data.reset_index()
+    data['Duration'] = data['End'] - data['Start']
+    speaker_ids = data['Speaker ID'].astype(int)
+    start = data['Start'].astype(float)
+    duration = data['Duration'].astype(float)
+
+    # Save to RTTM file
+    nrows = data.shape[0]
+    with open(output_rttm_path, "w") as f:
+        for i in range(nrows):
+            f.write(f"SPEAKER {int(video_id):05d} 0 {start[i]:.2f} {duration[i]:.2f} <NA> <NA> {speaker_ids[i]} <NA> <NA>\n")
+
+def csvs_to_rttms(input_dir: str, output_dir: str):
+    """
+    Traverse the preprocessed directory structure and convert all is_speaking.csv files to RTTM lines.
+    """
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for csv_path in sorted(input_dir.iterdir()):
+        if csv_path.suffix == '.csv':
+            video_id = csv_path.stem
+            output_rttm_path = output_dir / f'{video_id}.rttm'
+            csv_to_rttm(
+                csv_path=str(csv_path),
+                output_rttm_path=output_rttm_path
+            )

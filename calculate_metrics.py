@@ -10,13 +10,18 @@ from pathlib import Path
 FRAME_SIZE = 0.25  # 4 frames per second
 
 PATH_TO_PREDS = "predictions"
-PATH_TO_TARGETS = "data/few_val.rttm"
+PATH_TO_TARGETS = "rmse/few.val.rttm"
+
 
 
 def main():
     root_predictions = Path(PATH_TO_PREDS)
-    # --- Main logic ---
     model_folders = {
+        "visual": root_predictions / "visual_rttms",
+        "audio": root_predictions / "audio_rttms",
+        "MM Concat": root_predictions / "mm_concat_rttms",
+        "MM MatMul": root_predictions / "mm_tensor_rttms",
+        "MM Additive": root_predictions / "mm_additive_rttms",
         "AWS Transcribe": root_predictions / "aws_transcribe_rttms",
         "Diaper": root_predictions / "diaper_rttms",
         "NVIDIA NeMo": root_predictions / "NEMO_rttms",
@@ -24,39 +29,63 @@ def main():
         "Pyannote": root_predictions / "pyannote_rttms",
     }
 
-    # Load ground truth
-    targets_by_video = rttm_to_annotations(PATH_TO_TARGETS)
+    # Load and normalize ground truth
+    raw_gt = rttm_to_annotations(PATH_TO_TARGETS)
+    targets_by_video = {str(k).zfill(5): v for k, v in raw_gt.items()}
 
-    # Load models and compare with ground truth
+    # print(f"\nLoaded {len(targets_by_video)} ground truth entries")
+    # print("Sample GT FileIDs:", list(targets_by_video.keys())[:10])
+
+    # print("\nGround truth keys after normalization:")
+    # for gt_id in list(targets_by_video.keys()):
+    #     print(f"- {gt_id}")
     metrics_by_model = {}
-    for model_name in model_folders:
-        print(f"\n*********** Evaluating model: {model_name} ***********")
-        # Load predictions
-        model_folder = model_folders[model_name]
-        matched_files = 0
-        preds_by_video = {}
-        for pred_file in glob(f"{model_folder}/*.rttm"):
-            # Add the annotations for this file
-            file_id = basename(pred_file).replace(".rttm", "").zfill(5)
-            if file_id in targets_by_video:
-                preds_by_video.update(rttm_to_annotations(pred_file))
-                matched_files += 1
-            else:
-                print(f"Skipping: No matching ground truth for {file_id}")
-                continue
 
-        # Get dictionary of metrics
+    for model_name, model_folder in model_folders.items():
+        print(f"\n*********** Evaluating model: {model_name} ***********")
+        preds_by_video = {}
+        matched_files = 0
+
+        for pred_file in glob(f"{model_folder}/*.rttm"):
+            pred_ann_dict = rttm_to_annotations(pred_file)
+
+            # print(f"Checking predictions in file: {pred_file}")
+            # print("FileIDs in prediction file:", list(pred_ann_dict.keys()))
+
+            for file_id, ann in pred_ann_dict.items():
+                norm_file_id = str(file_id).zfill(5)
+
+                if norm_file_id in targets_by_video:
+                    preds_by_video[norm_file_id] = ann
+                    matched_files += 1
+                else:
+                    print(f"Skipping: No matching ground truth for {norm_file_id}")
+
+        print(f"Matched {matched_files} files for {model_name}")
+
         model_metrics = calculate_metrics_for_dataset(
             preds_dict=preds_by_video,
             targets_dict=targets_by_video,
         )
-
-        # Dictionary for model results
         metrics_by_model[model_name] = model_metrics
 
     with open("intrinsic_results.txt", "w") as f:
         dump_json(metrics_by_model, f, indent=2)
-    print(metrics_by_model)
+
+    print("\n=== Final Evaluation Summary ===")
+    for model, metrics in metrics_by_model.items():
+        print(f"\n{model} Metrics:")
+        for metric_name, value in metrics.items():
+            if metric_name == "metricsByVideo":
+                continue  # skip per-video details
+            if isinstance(value, float):
+                print(f"  {metric_name}: {value:.4f}")
+            else:
+                print(f"  {metric_name}: {value}")
+
+if __name__ == '__main__':
+    main()
+
 
 
 def load_rttm(file_path):

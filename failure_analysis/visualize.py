@@ -28,16 +28,15 @@ def plot_speaker_timeline_clamped(
 
     # Filter segments based on the specified time range
     clamped_segments = []
+    true_num_speakers = num_speakers
     for start, end, speaker in segments:
         if end > start_time and start < end_time:
             if speaker_mapping:
                 if speaker in speaker_mapping:
                     speaker = speaker_mapping[speaker]
                 else:
-                    # new_id = str(int(max(list(speaker_mapping.values()))) + 1)
-                    # speaker_mapping[speaker] = new_id
-                    # speaker = new_id
-                    continue
+                    num_speakers += 1
+                    speaker = num_speakers
             clamped_segments.append(
                 (max(start, start_time), min(end, end_time), speaker)
             )
@@ -55,7 +54,7 @@ def plot_speaker_timeline_clamped(
         ax.broken_barh(
             [(start, end - start)],
             (y_pos - 0.4, 0.8),
-            facecolors=colors(y_pos),
+            facecolors=colors(y_pos) if int(speaker) < true_num_speakers else 'gray',
             edgecolor="black",
             linewidth=0.5,
         )
@@ -63,7 +62,7 @@ def plot_speaker_timeline_clamped(
     # Format plot
     ax.set_xlim(start_time, end_time)  # Clamp x-axis to the specified range
     ax.set_yticks(range(num_speakers))
-    ax.set_yticklabels(speakers)
+    ax.set_yticklabels(range(num_speakers))
     ax.set_ylim(-0.6, num_speakers - 0.2)
     ax.set_ylabel("Speaker ID")
     ax.set_xlabel("Time (seconds)")
