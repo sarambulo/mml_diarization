@@ -5,6 +5,7 @@ from config import VIDEO_FPS
 from utils import visualize_visual_triplet, s3_load_numpy, s3_save_numpy
 import io
 
+
 def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
     pairs_dir = os.path.join("preprocessed", vid, "visual_pairs")
 
@@ -31,14 +32,20 @@ def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
                 "preprocessed", vid, f"Chunk_{pos_chunk_id}", f"face_{speaker_id}.npy"
             )
             neg_path = os.path.join(
-                "preprocessed", vid, f"Chunk_{neg_chunk_id}", f"face_{neg_speaker_id}.npy"
+                "preprocessed",
+                vid,
+                f"Chunk_{neg_chunk_id}",
+                f"face_{neg_speaker_id}.npy",
             )
 
             if chunk_id != curr_anchor_chunk or speaker_id != curr_anchor_speaker:
                 curr_anchor_chunk = chunk_id
                 curr_anchor_speaker = speaker_id
                 anchor_path = os.path.join(
-                    "preprocessed", vid, f"Chunk_{curr_anchor_chunk}", f"face_{curr_anchor_speaker}.npy"
+                    "preprocessed",
+                    vid,
+                    f"Chunk_{curr_anchor_chunk}",
+                    f"face_{curr_anchor_speaker}.npy",
                 )
                 anchor = s3_load_numpy(bucket, anchor_path)
 
@@ -60,7 +67,10 @@ def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
                     name=f"chunk{curr_anchor_chunk}_speaker{curr_anchor_speaker}_frame{frame_id}_pair",
                 )
 
-            outfile = os.path.join(pairs_dir, f"chunk{curr_anchor_chunk}_speaker{curr_anchor_speaker}_frame{frame_id}_pair.npy")
+            outfile = os.path.join(
+                pairs_dir,
+                f"chunk{curr_anchor_chunk}_speaker{curr_anchor_speaker}_frame{frame_id}_pair.npy",
+            )
 
             # np.save(outpath, pair)
             s3_save_numpy(pair, bucket, outfile)

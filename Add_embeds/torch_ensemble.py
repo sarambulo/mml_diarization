@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchensemble import BaggingClassifier, GradientBoostingClassifier
 from torchensemble.utils.logging import set_logger
 
+
 # ----------------------------
 # Data Preparation
 # ----------------------------
@@ -20,14 +21,16 @@ class MultimodalDataset(Dataset):
     def __getitem__(self, idx):
         return self.audio_embeddings[idx], self.visual_embeddings[idx], self.labels[idx]
 
+
 def get_dataloaders(batch_size=32):
     train_dataset = MultimodalDataset()
     test_dataset = MultimodalDataset(num_samples=200)
-    
+
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    
+
     return train_loader, test_loader
+
 
 # ----------------------------
 # Base Model
@@ -39,12 +42,13 @@ class MultimodalMLP(nn.Module):
             nn.Linear(2 * embedding_dim, fusion_dim),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(fusion_dim, num_classes)
+            nn.Linear(fusion_dim, num_classes),
         )
 
     def forward(self, audio_embedding, visual_embedding):
         combined_embedding = torch.cat((audio_embedding, visual_embedding), dim=1)
         return self.fusion_layer(combined_embedding)
+
 
 # ----------------------------
 # Training Function (Generic)
@@ -55,22 +59,23 @@ def train_ensemble(model, train_loader, test_loader, epochs=20):
     model.set_criterion(criterion)
 
     # Set Optimizer
-    model.set_optimizer('Adam', lr=1e-3, weight_decay=5e-4)
+    model.set_optimizer("Adam", lr=1e-3, weight_decay=5e-4)
 
     # Train Model
     model.fit(
         train_loader,
         epochs=epochs,
-        test_loader=test_loader,  
+        test_loader=test_loader,
     )
 
     return model
+
 
 # ----------------------------
 # Train Bagging Model
 # ----------------------------
 def train_bagging(train_loader, test_loader):
-    logger = set_logger('multimodal_bagging')
+    logger = set_logger("multimodal_bagging")
     print("\n🔹 Training Bagging Model...")
 
     bagging_model = BaggingClassifier(
@@ -81,11 +86,12 @@ def train_bagging(train_loader, test_loader):
 
     return train_ensemble(bagging_model, train_loader, test_loader)
 
+
 # ----------------------------
 # Train Boosting Model
 # ----------------------------
 def train_boosting(train_loader, test_loader):
-    logger = set_logger('multimodal_boosting')
+    logger = set_logger("multimodal_boosting")
     print("\n🔹 Training Boosting Model...")
 
     boosting_model = GradientBoostingClassifier(
@@ -97,12 +103,14 @@ def train_boosting(train_loader, test_loader):
 
     return train_ensemble(boosting_model, train_loader, test_loader)
 
+
 # ----------------------------
 # Model Evaluation
 # ----------------------------
 def evaluate_model(model, test_loader, model_name):
     acc = model.evaluate(test_loader)
     print(f"✅ {model_name} Accuracy: {acc:.4f}")
+
 
 # ----------------------------
 # Main Execution

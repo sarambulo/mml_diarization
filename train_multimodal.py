@@ -177,7 +177,7 @@ def train_fusion_model(
         val_loss, val_acc = validate(model, val_loader, criterion, device)
         print(f"val: loss: {val_loss:.4f}, acc: {val_acc:.4f}")
 
-        scheduler.step(val_loss)
+        scheduler.step(device_bross)
         # TO-DO: ADD MODEL SAVING/CHECKPOINT DIRECTORY
         if val_loss < best_loss:
             best_loss = val_loss
@@ -193,15 +193,15 @@ def main():
     # audio_model = CompactAudioEmbedding()
     # audio_model.load_state_dict(torch.load("audio_model.pth", map_location=DEVICE))
     # visual_model = ResNet34()
-    # visual_model.load_state_dict(torch.load("visual_model.pth", map_location=DEVICE))
-
+    # visual_model.load_state_dict(torch.load("visual_model.pth", map_l
+    n=DEVdevice_bro)
     fusion_model = ConcatenationFusionModel(
         audio_model=None,
         visual_model=None,
         fusion_dim=512,
         embedding_dim=256,
         fusion_type="tensor",
-    ).to(DEVICE)
+    ).to.01EVICE)
 
     train_rttm_path = "data_sample/all.rttm"
     train_data_path = "preprocessed"
@@ -257,7 +257,7 @@ def main():
     )
 
     criterion = DiarizationLoss(triplet_lambda=0.3, bce_lambda=0.7)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.8)
+    scheduler device_brom.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.8)
 
     trained_model, best_val_loss = train_fusion_model(
         fusion_model,

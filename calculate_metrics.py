@@ -12,6 +12,7 @@ FRAME_SIZE = 0.25  # 4 frames per second
 PATH_TO_PREDS = "predictions"
 PATH_TO_TARGETS = "data/few_val.rttm"
 
+
 def main():
     root_predictions = Path(PATH_TO_PREDS)
     # --- Main logic ---
@@ -20,7 +21,7 @@ def main():
         "Diaper": root_predictions / "diaper_rttms",
         "NVIDIA NeMo": root_predictions / "NEMO_rttms",
         "Powerset": root_predictions / "powerset_rttms",
-        "Pyannote": root_predictions / "pyannote_rttms"
+        "Pyannote": root_predictions / "pyannote_rttms",
     }
 
     # Load ground truth
@@ -60,11 +61,26 @@ def main():
 
 def load_rttm(file_path):
     """Load RTTM file into a dataframe."""
-    df = pd.read_csv(file_path, sep=r"\s+", header=None,
-                     names=["Type", "FileID", "Channel", "Start", "Duration",
-                            "NA1", "NA2", "Speaker", "NA3", "NA4"])
+    df = pd.read_csv(
+        file_path,
+        sep=r"\s+",
+        header=None,
+        names=[
+            "Type",
+            "FileID",
+            "Channel",
+            "Start",
+            "Duration",
+            "NA1",
+            "NA2",
+            "Speaker",
+            "NA3",
+            "NA4",
+        ],
+    )
     df["End"] = df["Start"] + df["Duration"]
     return df
+
 
 def rttm_to_speaker_counts(df, frame_size=FRAME_SIZE):
     """Convert RTTM to per-frame speaker count for each file."""
@@ -80,10 +96,12 @@ def rttm_to_speaker_counts(df, frame_size=FRAME_SIZE):
         file_to_counts[file_id] = counts
     return file_to_counts
 
+
 def compute_rmse(gt_counts, pred_counts):
     length = min(len(gt_counts), len(pred_counts))
     mse = np.mean((gt_counts[:length] - pred_counts[:length]) ** 2)
     return np.sqrt(mse)
+
 
 def compute_temporal_metrics(counts_dict):
     """Compute speaker turn count, overlap ratio, and temporal coverage."""
@@ -96,9 +114,10 @@ def compute_temporal_metrics(counts_dict):
         metrics[file_id] = {
             "turns": turn_count,
             "overlap_ratio": overlap_ratio,
-            "coverage": coverage
+            "coverage": coverage,
         }
     return metrics
+
 
 def average_metrics(metrics_dict):
     """Average across all files for a model."""
@@ -108,6 +127,7 @@ def average_metrics(metrics_dict):
     overlap = np.mean([m["overlap_ratio"] for m in metrics_dict.values()])
     coverage = np.mean([m["coverage"] for m in metrics_dict.values()])
     return {"turns": turns, "overlap_ratio": overlap, "coverage": coverage}
+
 
 def compute_missed_speech(gt_counts_dict, pred_counts_dict):
     """Compute Missed Speech (MS) for each file."""
@@ -125,5 +145,6 @@ def compute_missed_speech(gt_counts_dict, pred_counts_dict):
             ms_values.append(ms)
     return np.mean(ms_values) if ms_values else float("nan")
 
-if __name__=='__main__':
+
+if __name__ == "__main__":
     main()

@@ -9,7 +9,10 @@ import json
 from pyannote.core import Annotation
 from sklearn.metrics import root_mean_squared_error
 
-def calculate_metrics_for_video(preds: Annotation, targets: Annotation, der=None, jer=None):
+
+def calculate_metrics_for_video(
+    preds: Annotation, targets: Annotation, der=None, jer=None
+):
     if not der:
         der = GreedyDiarizationErrorRate()
     if not jer:
@@ -32,8 +35,8 @@ def calculate_metrics_for_video(preds: Annotation, targets: Annotation, der=None
 
     videoMetrics["JER"] = jer(preds, targets)
 
-    videoMetrics['Predicted Num Speakers'] = len(preds.labels())
-    videoMetrics['Ground Truth Num Speakers'] = len(targets.labels())
+    videoMetrics["Predicted Num Speakers"] = len(preds.labels())
+    videoMetrics["Ground Truth Num Speakers"] = len(targets.labels())
     return videoMetrics
 
 
@@ -66,8 +69,8 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     metrics = {}
 
     num_speakers_rmse = root_mean_squared_error(
-        y_true=df['Ground Truth Num Speakers'],
-        y_pred=df['Predicted Num Speakers'],
+        y_true=df["Ground Truth Num Speakers"],
+        y_pred=df["Predicted Num Speakers"],
     )
 
     metrics["DER"] = float(df.DER.mean())
@@ -78,7 +81,7 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     metrics["FAR"] = float(df.FAR.mean())
     metrics["SE"] = float(df.SE.mean())
     metrics["SER"] = float(df.SER.mean())
-    metrics["Duration"] = float(df['totalDuration'].mean())
+    metrics["Duration"] = float(df["totalDuration"].mean())
     metrics["Num Speakers RMSE"] = num_speakers_rmse
 
     return metrics
