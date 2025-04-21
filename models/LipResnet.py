@@ -24,7 +24,7 @@ class VisualEmbedding(torch.nn.Module):
         pixel_values = (bbox_tensor - mean) / std
         return pixel_values
 
-class VisualFullModel(torch.nn.Module):
+class VisualLipModel(torch.nn.Module):
    def __init__(self, embedding_dim=512):
       super().__init__()
       self.visual_encoder = VisualEmbedding()
