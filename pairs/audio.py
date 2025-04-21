@@ -4,6 +4,11 @@ import pandas as pd
 from utils import visualize_mel_spectrogram, s3_load_numpy, s3_save_numpy
 from config import VIDEO_FPS
 
+def load_audio_frames():
+    pass
+
+def build_audio_pair():
+    pass
 
 def build_audio_pairs(bucket, vid, pairs_path, audio_type, visualize=False):
     pairs_dir = os.path.join("preprocessed", vid, f"{audio_type}_audio_pairs")

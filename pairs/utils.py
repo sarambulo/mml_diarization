@@ -5,6 +5,7 @@ import boto3
 import io
 
 S3 = boto3.client("s3")
+paginator = S3.get_paginator('list_objects_v2')
 
 
 def create_numbered_file(dir, base_name, extension):
@@ -44,6 +45,14 @@ def list_s3_files(bucket_name, prefix=""):
 
     return file_keys
 
+def upload_npz(bucket, key, visual_data, audio_data, metadata):
+    buffer = io.BytesIO()
+    np.savez_compressed(
+        buffer, visual_data=visual_data, audio_data=audio_data, is_speaking=metadata
+    )
+    buffer.seek(0)
+    s3.upload_fileobj(buffer, Bucket=bucket, Key=key)
+    
 
 def s3_save_numpy(array, bucket_name, key):
     byte_stream = io.BytesIO()

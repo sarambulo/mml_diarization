@@ -9,12 +9,7 @@ from pathlib import Path
 FRAME_DURATION = 0.25  # seconds per frame
 
 
-def get_rttm_labels(
-    rttm_path: str,
-    timestamps: list,
-    speaker_ids: list,
-    video_id
-):
+def get_rttm_labels(rttm_path: str, timestamps: list, speaker_ids: list, video_id):
     """
     Parse an RTTM file in the format:
         SPEAKER file_id chan start dur <NA> <NA> speaker_id <NA> <NA>
@@ -35,7 +30,7 @@ def get_rttm_labels(
         A list of speaker/face IDs that appear in this chunk (keys in `faces`).
         These should match the RTTM's speaker_id in column 7 (e.g., "2", "0", "1", etc.).
     csv_path : str
-        The path where the resulting CSV should be written. 
+        The path where the resulting CSV should be written.
         Example: "path/to/chunk_x/is_speaking.csv"
 
     Returns
@@ -44,8 +39,8 @@ def get_rttm_labels(
         DataFrame with columns ["face_id", "frame_id", "is_speaking"].
     """
 
-    speakers= [str(x) for x in speaker_ids]
-    
+    speakers = [str(x) for x in speaker_ids]
+
     intervals = {}
     with open(rttm_path, "r") as f:
         for line in f:
@@ -53,7 +48,7 @@ def get_rttm_labels(
             # Skip lines that don't start with 'SPEAKER' or aren't long enough
             if parts[0] != "SPEAKER":
                 continue
-            if parts[1]!=video_id:
+            if parts[1] != video_id:
                 continue
             # parts layout:
             #  0: SPEAKER
@@ -85,7 +80,7 @@ def get_rttm_labels(
             speaking_flag = False
             if face_id in intervals:
                 # print("REACH")
-                for (start, end) in intervals[face_id]:
+                for start, end in intervals[face_id]:
                     if start <= t < end:
                         speaking_flag = True
                         break
@@ -96,7 +91,6 @@ def get_rttm_labels(
     # print(df)
 
     return df
-
 
 
 def greedy_speaker_matching(reference_rttm_path, predicted_rttm_path) -> Dict[str, str]:
@@ -158,34 +152,43 @@ def csv_to_rttm(csv_path: str, output_rttm_path: str) -> None:
     if not Path(csv_path).exists():
         raise FileExistsError(f"File {csv_path} does not exist")
     data = pd.read_csv(csv_path)
-    data = data.rename(columns={
-        'is_speaking_pred': 'Speaking',
-        'speaker_id': 'Speaker ID',
-        'video_id': 'Video ID',
-        'frame_idx': 'Frame Offset',
-        'chunk_id': 'Chunk ID',
-    })
-    data['Timestamp'] = (data['Frame Offset'] + data['Chunk ID'] * 5) * FRAME_DURATION
-    video_id = data['Video ID'][0]
-    data = data.sort_values(['Speaker ID', 'Timestamp'])
-    data['Interval Flag'] = (data['Speaking'] == 1) & (data.groupby('Speaker ID')['Speaking'].shift(1, fill_value=0) == 0)
-    data['Interval ID'] = data.groupby('Speaker ID')['Interval Flag'].cumsum()
-    data = data[data['Speaking'] == 1]
-    data = data.groupby(['Speaker ID', 'Interval ID']).agg(**{
-        'Start': ('Timestamp', lambda x: x.min()),
-        'End': ('Timestamp', lambda x: x.max() + FRAME_DURATION),
-    })
+    data = data.rename(
+        columns={
+            "is_speaking_pred": "Speaking",
+            "speaker_id": "Speaker ID",
+            "video_id": "Video ID",
+            "frame_idx": "Frame Offset",
+            "chunk_id": "Chunk ID",
+        }
+    )
+    data["Timestamp"] = (data["Frame Offset"] + data["Chunk ID"] * 5) * FRAME_DURATION
+    video_id = data["Video ID"][0]
+    data = data.sort_values(["Speaker ID", "Timestamp"])
+    data["Interval Flag"] = (data["Speaking"] == 1) & (
+        data.groupby("Speaker ID")["Speaking"].shift(1, fill_value=0) == 0
+    )
+    data["Interval ID"] = data.groupby("Speaker ID")["Interval Flag"].cumsum()
+    data = data[data["Speaking"] == 1]
+    data = data.groupby(["Speaker ID", "Interval ID"]).agg(
+        **{
+            "Start": ("Timestamp", lambda x: x.min()),
+            "End": ("Timestamp", lambda x: x.max() + FRAME_DURATION),
+        }
+    )
     data = data.reset_index()
-    data['Duration'] = data['End'] - data['Start']
-    speaker_ids = data['Speaker ID'].astype(int)
-    start = data['Start'].astype(float)
-    duration = data['Duration'].astype(float)
+    data["Duration"] = data["End"] - data["Start"]
+    speaker_ids = data["Speaker ID"].astype(int)
+    start = data["Start"].astype(float)
+    duration = data["Duration"].astype(float)
 
     # Save to RTTM file
     nrows = data.shape[0]
     with open(output_rttm_path, "w") as f:
         for i in range(nrows):
-            f.write(f"SPEAKER {int(video_id):05d} 0 {start[i]:.2f} {duration[i]:.2f} <NA> <NA> {speaker_ids[i]} <NA> <NA>\n")
+            f.write(
+                f"SPEAKER {int(video_id):05d} 0 {start[i]:.2f} {duration[i]:.2f} <NA> <NA> {speaker_ids[i]} <NA> <NA>\n"
+            )
+
 
 def csvs_to_rttms(input_dir: str, output_dir: str):
     """
@@ -195,10 +198,7 @@ def csvs_to_rttms(input_dir: str, output_dir: str):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     for csv_path in sorted(input_dir.iterdir()):
-        if csv_path.suffix == '.csv':
+        if csv_path.suffix == ".csv":
             video_id = csv_path.stem
-            output_rttm_path = output_dir / f'{video_id}.rttm'
-            csv_to_rttm(
-                csv_path=str(csv_path),
-                output_rttm_path=output_rttm_path
-            )
+            output_rttm_path = output_dir / f"{video_id}.rttm"
+            csv_to_rttm(csv_path=str(csv_path), output_rttm_path=output_rttm_path)

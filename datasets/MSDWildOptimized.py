@@ -91,7 +91,9 @@ class LazyNPZDataset(Dataset):
 
     def _load_file(self, file_idx: int):
         # Load and cache the .npz file
-        self._current_data = load_npz_from_s3(bucket=self.bucket, key=self.npz_file_paths[file_idx])
+        self._current_data = load_npz_from_s3(
+            bucket=self.bucket, key=self.npz_file_paths[file_idx]
+        )
         self._current_file_index = file_idx
         if self.shuffle_within_file:
             self._permutation = np.random.permutation(self.samples_per_file)

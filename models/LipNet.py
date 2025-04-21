@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.init as init
 import math
 
+
 class LipCoordNet(torch.nn.Module):
     def __init__(self, dropout_p=0.5, coord_input_dim=40, coord_hidden_dim=128):
         super(LipCoordNet, self).__init__()

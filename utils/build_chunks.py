@@ -74,6 +74,8 @@ def build_chunks(
 
         # Labels
         speaker_ids = list(faces.keys())
-        is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids,video_id=video_id)
+        is_speaking = get_rttm_labels(
+            rttm_path, timestamps, speaker_ids=speaker_ids, video_id=video_id
+        )
         chunks.append((faces, melspectrogram, mfcc, is_speaking))
     return chunks

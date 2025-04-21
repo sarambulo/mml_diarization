@@ -13,7 +13,6 @@ PATH_TO_PREDS = "predictions"
 PATH_TO_TARGETS = "rmse/few.val.rttm"
 
 
-
 def main():
     root_predictions = Path(PATH_TO_PREDS)
     model_folders = {
@@ -83,9 +82,9 @@ def main():
             else:
                 print(f"  {metric_name}: {value}")
 
-if __name__ == '__main__':
-    main()
 
+if __name__ == "__main__":
+    main()
 
 
 def load_rttm(file_path):

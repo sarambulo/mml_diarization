@@ -17,11 +17,11 @@ def main():
         "mm_concat": predictions_root_path / "mm_concat_rttms",
         "mm_tensor": predictions_root_path / "mm_tensor_rttms",
         "mm_additive": predictions_root_path / "mm_additive_rttms",
-        'NEMO': predictions_root_path / "NEMO_rttms",
-        'pyannote': predictions_root_path / "pyannote_rttms",
-        'diaper': predictions_root_path / "diaper_rttms",
-        'powerset': predictions_root_path / "powerset_rttms",
-        'aws_transcribe': predictions_root_path / "aws_transcribe_rttms",
+        "NEMO": predictions_root_path / "NEMO_rttms",
+        "pyannote": predictions_root_path / "pyannote_rttms",
+        "diaper": predictions_root_path / "diaper_rttms",
+        "powerset": predictions_root_path / "powerset_rttms",
+        "aws_transcribe": predictions_root_path / "aws_transcribe_rttms",
     }
     # Clip = video_name, start_time, end_time
     clips = load_clips(clips_path=str(Path("failure_analysis", "clips.txt")))

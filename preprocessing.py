@@ -84,13 +84,12 @@ def main():
     # video_files=[]
     # video_files = ["msdwild_boundingbox_labels/"+ str(idx).zfill(5)+".mp4" for idx in range(1, 10)]
     video_files = [
-            obj["Key"]
-            for page in paginator.paginate(Bucket=bucket_name)
-            if "Contents" in page
-            for obj in page["Contents"]
-            if obj["Key"].endswith(".mp4")
-        ]
-   
+        obj["Key"]
+        for page in paginator.paginate(Bucket=bucket_name)
+        if "Contents" in page
+        for obj in page["Contents"]
+        if obj["Key"].endswith(".mp4")
+    ]
 
     # done = 708
 

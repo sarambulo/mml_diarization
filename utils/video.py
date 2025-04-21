@@ -38,7 +38,7 @@ def read_video(
     video_path = str(video_path)
     # print(video_path)
     s3.download_file(bucket_name, video_path, video_path)
-   
+
     print(video_path)
     # Create a streams to read the video and audio
     video_stream = VideoReader(video_path, stream="video")
