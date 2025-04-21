@@ -54,7 +54,7 @@ def plot_speaker_timeline_clamped(
         ax.broken_barh(
             [(start, end - start)],
             (y_pos - 0.4, 0.8),
-            facecolors=colors(y_pos) if int(speaker) < true_num_speakers else 'gray',
+            facecolors=colors(y_pos) if int(speaker) < true_num_speakers else "gray",
             edgecolor="black",
             linewidth=0.5,
         )
