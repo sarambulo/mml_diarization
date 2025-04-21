@@ -102,7 +102,6 @@ def get_combined_negative_pair(
 # INPUT: is_speaking.csv
 # output: pairs.csv with 7 new columns:  PosChunkID, PosFrameID, NegChunkID, NegFrameID, NegSpeakerID, Video_Flag, Audio_Flag
 def choose_and_save_pairs_for_video(input_file_path, output_file_path):
-    print(input_file_path)
     df = pd.read_csv(
         input_file_path,
         header=0,

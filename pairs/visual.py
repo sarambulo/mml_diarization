@@ -5,16 +5,17 @@ from config import VIDEO_FPS
 from utils import visualize_visual_triplet, s3_load_numpy, s3_save_numpy, paginator
 import io
 import re
+from collections import defaultdict
 
 
-
-def load_video_frames(bucket_name, vid):
+def load_video_frames(bucket_name, vid, visual_type):
+    # print(visual_type)
     prefix = os.path.join("preprocessed", vid)
-    face_pattern = re.compile(fr'^{prefix}/Chunk_(\d+)/face_(\d+)\.npy$')
-    temp = {}
+    face_pattern = re.compile(rf"^{prefix}/Chunk_(\d+)/{visual_type}_(\d+)\.npy$")
+    temp = defaultdict(dict)
     for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-        for obj in page.get('Contents', []):
-            key = obj['Key']
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
             m = face_pattern.match(key)
             if not m:
                 continue
@@ -22,44 +23,32 @@ def load_video_frames(bucket_name, vid):
             speaker_id = int(m.group(2))
 
             arr = s3_load_numpy(bucket_name, key)
-            print(arr.shape)
-            temp.setdefault(chunk_id, {})[speaker_id] = arr
+            temp[chunk_id][speaker_id] = arr
 
-    num_chunks = max(temp.keys()) + 1
-    num_faces = max(max(faces.keys()) for faces in temp.values()) + 1
-    print(num_faces)
-    
-    # Initialize list to collect per-chunk arrays
-    all_chunks = []
-    
-    for chunk in range(num_chunks):
-        faces = temp.get(chunk, {})
-        # Collect faces in order
-        print(faces)
-        face_list = [faces[i] for i in faces]
-        # Stack faces along new axis 0: shape (num_faces, ...)
-        stacked_faces = np.stack(face_list, axis=0)
-        print(stacked_faces.shape)
-        all_chunks.append(stacked_faces)
-    
-    # Final stacking across chunks: shape (num_chunks, num_faces, ...)
-    result = np.stack(all_chunks, axis=0)
-    
-    # Now you can access elements like result[chunk_idx, face_idx, ...]
-    print(result.shape)
-    return result
+    return temp
 
-def build_visual_pair(video_frames, chunk_id, frame_id, speaker_id, pos_chunk_id, pos_frame_id, neg_chunk_id, neg_frame_id, neg_speaker_id):
+
+def build_visual_pair(
+    video_frames,
+    chunk_id,
+    frame_id,
+    speaker_id,
+    pos_chunk_id,
+    pos_frame_id,
+    neg_chunk_id,
+    neg_frame_id,
+    neg_speaker_id,
+):
     pair = np.array(
         [
-            video_frames[chunk_id, speaker_id, frame_id],
-            video_frames[pos_chunk_id, speaker_id, pos_frame_id],
-            video_frames[neg_chunk_id, neg_speaker_id, neg_frame_id],
+            video_frames[chunk_id][speaker_id][frame_id],
+            video_frames[pos_chunk_id][speaker_id][pos_frame_id],
+            video_frames[neg_chunk_id][neg_speaker_id][neg_frame_id],
         ]
     )
 
     return pair
-    
+
 
 def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
     pairs_dir = os.path.join("preprocessed", vid, "visual_pairs")
