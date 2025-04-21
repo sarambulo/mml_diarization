@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 import sys
 sys.path.insert(0, 'datasets')
-from MSDWild import MSDWildChunks
+from ..MSDWild import MSDWildChunks
 import numpy as np
 from pathlib import Path
 import random
@@ -9,7 +9,7 @@ from torchsummaryX import summary
 import torch
 import pandas as pd
 import torch.nn.functional as F
-from .VisualOnly import VisualOnlyModel
+from LipResnet import VisualOnlyModel
 from sklearn.cluster import AgglomerativeClustering
 from losses.DiarizationLoss import DiarizationLoss
 from tqdm import tqdm
@@ -77,12 +77,12 @@ def train_epoch(model, dataloader, optimizer, criterion, all_records):
         # print(negatives.shape)
         # forward
         with torch.amp.autocast(DEVICE):  # This implements mixed precision. Thats it!
-            embeddings, logits = model((None, None,all_images))
+            embeddings, probs = model(all_images)
             anchors        = embeddings[            :   batch_size]
             positive_pairs = embeddings[  batch_size: 2*batch_size]
             negative_pairs = embeddings[2*batch_size: 3*batch_size]
             logits         = logits[:batch_size]
-            probs = torch.sigmoid(logits)
+            
             pred_labels = (probs >= 0.5).float()
             # print(logits)
             # Use the type of output depending on the loss function you want to use
@@ -156,12 +156,6 @@ def evaluate_epoch(model, dataloader, criterion):
 data_path = "preprocessed"
 partition_path_train = "data_sample/few_train.rttm"
 partition_path_val = "data_sample/few_train.rttm"
-# train_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path_train, subset=1.0)
-# val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_val, subset=1.0)
-
-# train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=train_dataset.build_batch)
-# val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
-
 
 full_dataset = MSDWildChunks(
     data_path=data_path, 
@@ -198,9 +192,10 @@ val_loader = DataLoader(
 
 print(f"Train size: {len(train_subset)}   Val size: {len(val_subset)}")
 
-for batch_idx, (visual_data, audio_data, is_speaking) in enumerate(train_loader):
+for batch_idx, (visual_data, lip_data, audio_data, is_speaking) in enumerate(train_loader):
     print(f"\n--- Batch {batch_idx} ---")
     print(f"visual_data shape: {visual_data.shape}")
+    print(f"lip_data shape: {lip_data.shape}")
     print(f"audio_data shape:  {audio_data.shape}")
     print(f"is_speaking shape: {is_speaking.shape}")
     
@@ -218,6 +213,7 @@ start_epoch = 0
 final_epoch = 10
 metrics = {}
 best_valid_acc = 0
+
 for epoch in range(start_epoch, final_epoch):
         print("\nEpoch {}/{}".format(epoch+1, final_epoch))
         # train
@@ -246,13 +242,16 @@ for epoch in range(start_epoch, final_epoch):
             model_path = Path(CHECKPOINT_PATH, f'best_visual.pth')
             save_model(model, metrics, epoch, model_path)
             print("Saved best model")
+        
+        if (epoch + 1) % 3 == 0:
+            save_model(model, metrics, epoch, model_path)
 
         
         # You may want to call some schedulers inside the train function. What are these?
         if scheduler is not None:
             scheduler.step(valid_loss)
-
-    # save last model
+            
+# save last model
 model_path = Path(CHECKPOINT_PATH, f'last_visual.pth')
 save_model(model, metrics, epoch, model_path)
 print("Saved best model")
