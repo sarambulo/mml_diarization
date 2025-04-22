@@ -11,10 +11,11 @@ from tqdm import tqdm
 # train_rttm_path = "sample.rttm"
 # save_path = "sample_loader"
 
-subset = 1.0
+subset = 0.025
 
 train_rttm_path = "few.train.rttm"
-save_path = f"data_loader_{str(subset).replace('.', '')}"
+save_path = f"few_train_dataset_{str(subset).replace('.', '')}"
+
 train_data_path = os.path.join("s3://", S3_BUCKET_NAME, S3_VIDEO_DIR)
 
 
@@ -57,16 +58,16 @@ loader = DataLoader(
 )
 
 print("Completed Initial Loader")
-for i in tqdm(loader, desc="Iterating through batches"):
-    # print(i.keys())
-    # print(i["video_data"].shape)
-    # print(i["audio_data"].shape)
-    # print(i["labels"])
-    pass
+for i in loader:
+    print(i.keys())
+    print(i["video_data"].shape)
+    print(i["audio_data"].shape)
+    print(i["labels"])
+    break
 
 # Save the entire model
 buffer = io.BytesIO()
-torch.save(loader, buffer)
+torch.save(dataset, buffer)
 buffer.seek(0)
 
 # Upload to S3
@@ -77,12 +78,11 @@ s3_client.put_object(
 
 
 # # Download from S3
-# s3_client = boto3.client('s3')
-# response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=f"loaders/{save_path}.pth")
-# model_data = response['Body'].read()
-
-# buffer = io.BytesIO(model_data)
-# loader = torch.load(buffer, weights_only=False)
+s3_client = boto3.client("s3")
+response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=f"loaders/{save_path}.pth")
+model_data = response["Body"].read()
+buffer = io.BytesIO(model_data)
+dataset2 = torch.load(buffer, weights_only=False)
 
 # print("Completed Saving Loader")
 # for i in loader:

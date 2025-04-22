@@ -50,6 +50,7 @@ def build_visual_pair(
     return pair
 
 
+
 def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
     pairs_dir = os.path.join("preprocessed", vid, "visual_pairs")
 

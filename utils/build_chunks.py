@@ -9,7 +9,6 @@ from .video import (
 from .audio import flatten_audio, transform_audio
 from .rttm import get_rttm_labels
 import math
-from tqdm import tqdm
 
 
 def build_chunks(
@@ -61,9 +60,8 @@ def build_chunks(
                 frame_ids=frame_ids,
                 bounding_boxes=bounding_boxes,
             )
-        except Exception as e:
-            # print(e)
-            raise ValueError(f"Failed extracting faces for video {video_path} -- {e}")
+        except:
+            raise ValueError(f"Failed extracting faces for video {video_path}")
         for speaker_id in faces:
             faces[speaker_id] = transform_video(
                 video_frames=faces[speaker_id],

@@ -90,16 +90,8 @@ def s3_save_numpy(array, bucket_name, key):
 def s3_load_numpy(bucket_name, file_key):
     response = S3.get_object(Bucket=bucket_name, Key=file_key)
     data = response["Body"].read()
-    try:
-        arr = np.load(io.BytesIO(data), allow_pickle=False)
-    except:
-        faces_1d = np.frombuffer(data, dtype=np.float32)
-        shape_check = faces_1d.size
-        if faces_1d.shape[0] % (3*112*112) != 0:
-            extra = faces_1d.shape[0] % (3*112*112)
-            faces_1d = faces_1d[extra:]
-        arr = faces_1d.reshape(-1, 3, 112, 112)
-    return arr
+    return np.load(io.BytesIO(data))
+
 
 def get_speaking_csv_files_s3(bucket, directory, filename):
     csv_files = []
