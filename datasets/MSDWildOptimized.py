@@ -9,7 +9,7 @@ import os
 from tqdm import tqdm
 
 
-def load_npz_from_s3(bucket: str, key: str):
+def load_npz_from_s3(bucket: str, key: str, visual_type):
     """
     Loads a .npz file from S3, unpacks arrays and metadata.
 
@@ -31,9 +31,9 @@ def load_npz_from_s3(bucket: str, key: str):
     data = np.load(npz_bytes, allow_pickle=True)
 
     result = {
-        "visual_data": data["visual_data"],
+        "visual_data": data[f"{visual_type}_data"],
         "audio_data": data["audio_data"],
-        "metadata": data["is_speaking"],
+        "metadata": data["metadata"],
     }
 
     return result
@@ -52,6 +52,7 @@ class LazyNPZDataset(Dataset):
         batch_size: int,
         bucket: str,
         shuffle_within_file: bool = False,
+        visual_type: str = "face",
     ):
         npz_file_paths = [
             os.path.join(npz_dir, f"triplet_batch_{str(idx).zfill(5)}.npz")
@@ -62,6 +63,7 @@ class LazyNPZDataset(Dataset):
         self.samples_per_file = batch_size
         self.total_samples = self.samples_per_file * len(self.npz_file_paths)
         self.bucket = bucket
+        self.visual_type = visual_type
 
         # State for current file cache
         self._current_file_index = None
@@ -92,11 +94,24 @@ class LazyNPZDataset(Dataset):
     def _load_file(self, file_idx: int):
         # Load and cache the .npz file
         self._current_data = load_npz_from_s3(
-            bucket=self.bucket, key=self.npz_file_paths[file_idx]
+            bucket=self.bucket, key=self.npz_file_paths[file_idx], visual_type=self.visual_type
         )
         self._current_file_index = file_idx
         if self.shuffle_within_file:
             self._permutation = np.random.permutation(self.samples_per_file)
+
+    def collate_fn(self, batch):
+        # Extract each feature: do the zip thing
+        video_data, audio_data, is_speaking = list(zip(*batch))
+        video_data = torch.stack(video_data)
+        audio_data = torch.stack(audio_data)
+        is_speaking = torch.tensor(is_speaking)
+        batch_data = {
+            "video_data": video_data,
+            "audio_data": audio_data,
+            "labels": is_speaking,
+        }
+        return batch_data
 
 
 class UpfrontNPZDataset(Dataset):
@@ -120,7 +135,9 @@ class UpfrontNPZDataset(Dataset):
         ]
         for i, path in enumerate(npz_file_paths):
             print(bucket, path)
-            data = load_npz_from_s3(bucket=bucket, key=path)
+            data = load_npz_from_s3(
+                bucket=bucket, key=path, visual_type=self.visual_type
+            )
             visuals = data["visual_data"]
             audios = data["audio_data"]
             labels = data["metadata"]

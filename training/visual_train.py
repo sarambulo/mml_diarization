@@ -163,17 +163,17 @@ def evaluate_epoch(model, dataloader, criterion):
 
     return avg_accuracy * 100, avg_loss
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     data_path = "preprocessed"
     partition_path_train = "few.train.rttm"
     partition_path_val = "few.train.rttm"
     # train_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path_train, subset=1.0)
     # val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_val, subset=1.0)
-    
+
     # train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=train_dataset.build_batch)
     # val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
-    
-    
+
     full_dataset = MSDWildChunks(
         data_path=S3_VIDEO_DIR,
         data_bucket=S3_BUCKET_NAME,
@@ -181,44 +181,43 @@ if __name__=="__main__":
         subset=0.5,
         refresh_fileset=False,
     )
-    
+
     dataset_size = len(full_dataset)
     indices = list(range(dataset_size))
     random.shuffle(indices)
-    
+
     # 80/20 split
     split = int(0.8 * dataset_size)
     train_indices = indices[:split]
     val_indices = indices[split:]
-    
+
     train_subset = Subset(full_dataset, train_indices)
     val_subset = Subset(full_dataset, val_indices)
-    
+
     train_loader = DataLoader(
         train_subset,
         batch_size=64,
         shuffle=True,  # we can still shuffle
         collate_fn=full_dataset.build_batch,
     )
-    
+
     val_loader = DataLoader(
         val_subset, batch_size=64, shuffle=False, collate_fn=full_dataset.build_batch
     )
-    
-    
+
     print(f"Train size: {len(train_subset)}   Val size: {len(val_subset)}")
-    
+
     for batch_idx, (visual_data, audio_data, is_speaking) in enumerate(train_loader):
         print(f"\n--- Batch {batch_idx} ---")
         print(f"visual_data shape: {visual_data.shape}")
         print(f"audio_data shape:  {audio_data.shape}")
         print(f"is_speaking shape: {is_speaking.shape}")
-    
+
         # If you just want to check the first batch, break after printing:
         break
-    
+
     model = VisualOnlyModel(embedding_dims=512, num_classes=2)
-    
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
     criterion = DiarizationLoss(0.5, 0.5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -247,7 +246,11 @@ if __name__=="__main__":
         )
         # validation
         valid_acc, valid_loss = evaluate_epoch(model, val_loader, criterion)
-        print("Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(valid_acc, valid_loss))
+        print(
+            "Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(
+                valid_acc, valid_loss
+            )
+        )
         metrics.update(
             {
                 "valid_cls_acc": valid_acc,
@@ -257,18 +260,18 @@ if __name__=="__main__":
         epoch_ckpt_path = Path(CHECKPOINT_PATH, f"epoch_{epoch+1}.pth")
         save_model(model, metrics, epoch, epoch_ckpt_path)
         print(f"Saved checkpoint for epoch {epoch+1}")
-    
+
         # save best model
         if valid_acc >= best_valid_acc:
             best_valid_acc = valid_acc
             model_path = Path(CHECKPOINT_PATH, f"best_visual.pth")
             save_model(model, metrics, epoch, model_path)
             print("Saved best model")
-    
+
         # You may want to call some schedulers inside the train function. What are these?
         if scheduler is not None:
             scheduler.step(valid_loss)
-    
+
     # save last model
     model_path = Path(CHECKPOINT_PATH, f"last_visual.pth")
     save_model(model, metrics, epoch, model_path)

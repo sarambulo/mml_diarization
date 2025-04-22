@@ -33,11 +33,14 @@ def build_combined_pairs(
     lip_frames = load_video_frames(bucket, vid, visual_type="lip")
     audio_frames = load_audio_frames(bucket, vid, audio_type)
 
+    for chunk_id in face_frames:
+        print(chunk_id, face_frames[chunk_id].keys())
+
     # for chunk_id in face_frames:
     #     for speaker_id in face_frames[chunk_id]:
-    #         plot_images_from_array(face_frames[chunk_id][speaker_id], f"eda/chunks_new/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_faces.png")
-    #         plot_images_from_array(lip_frames[chunk_id][speaker_id], f"eda/chunks_new/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_lips.png")
-
+    #         plot_images_from_array(face_frames[chunk_id][speaker_id], f"eda/chunks_00007/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_faces.png")
+            # plot_images_from_array(lip_frames[chunk_id][speaker_id], f"eda/chunks_new/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_lips.png")
+    print(pairs_df["chunk_id"].unique())
     for i, row in tqdm(pairs_df.iterrows(), total=len(pairs_df), desc="Building Pairs"):
         (
             chunk_id,
@@ -54,17 +57,18 @@ def build_combined_pairs(
         ) = row.values
 
         if video_flag == 1 and audio_flag == 1 and frame_id % 4 == 0:
-            # print(
-            #     f"i: {i}, "
-            #     f"chunk_id: {chunk_id}, "
-            #     f"frame_id: {frame_id}, "
-            #     f"speaker_id: {speaker_id}, "
-            #     f"pos_chunk_id: {pos_chunk_id}, "
-            #     f"pos_frame_id: {pos_frame_id}, "
-            #     f"neg_chunk_id: {neg_chunk_id}, "
-            #     f"neg_frame_id: {neg_frame_id}, "
-            #     f"neg_speaker_id: {neg_speaker_id}"
-            # )
+            print(
+                f"i: {i}, "
+                f"chunk_id: {chunk_id}, "
+                f"frame_id: {frame_id}, "
+                f"speaker_id: {speaker_id}, "
+                f"pos_chunk_id: {pos_chunk_id}, "
+                f"pos_frame_id: {pos_frame_id}, "
+                f"neg_chunk_id: {neg_chunk_id}, "
+                f"neg_frame_id: {neg_frame_id}, "
+                f"neg_speaker_id: {neg_speaker_id}"
+            )
+        
             face_data = build_visual_pair(
                 face_frames,
                 chunk_id,

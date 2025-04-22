@@ -49,21 +49,21 @@ def train_epoch(model, train_loader, optimizer, criterion, device):
         video_data = batch["video_data"].to(device)
         audio_data = batch["audio_data"].to(device)
         labels = batch["labels"].to(device)
-        
+
         anchor_v, pos_v, neg_v = video_data[:, 0], video_data[:, 1], video_data[:, 2]
         anchor_a, pos_a, neg_a = audio_data[:, 0], audio_data[:, 1], audio_data[:, 2]
-        
-        all_images  = torch.cat([anchor_v, pos_v, neg_v], dim=0).to(device)
-        all_audios  = torch.cat([anchor_a, pos_a, neg_a], dim=0).to(device)
-        
+
+        all_images = torch.cat([anchor_v, pos_v, neg_v], dim=0).to(device)
+        all_audios = torch.cat([anchor_a, pos_a, neg_a], dim=0).to(device)
+
         _, _, triplet_emb, triplet_probs = model(all_audios, all_images)
-        
+
         anchor_emb = triplet_emb[:batch_size]
-        pos_emb = triplet_emb[batch_size: 2*batch_size]
-        neg_emb = triplet_emb[2*batch_size: 3*batch_size]
-        
+        pos_emb = triplet_emb[batch_size : 2 * batch_size]
+        neg_emb = triplet_emb[2 * batch_size : 3 * batch_size]
+
         probs = triplet_probs[:batch_size]
-       
+
         # labels = labels.long()
         loss = criterion(anchor_emb, pos_emb, neg_emb, probs, labels)
 
@@ -76,7 +76,7 @@ def train_epoch(model, train_loader, optimizer, criterion, device):
         # print(f"train_probs: {probs}")
         # print(f"train_predicted: {predicted}")
         # print(f"train_labels: {labels}")
-        
+
         correct += (predicted == labels).sum().item()
         # print(f"correct: {correct}")
         total += labels.size(0)
@@ -99,21 +99,29 @@ def validate(model, val_loader, criterion, device):
             video_data = batch["video_data"].to(device)
             audio_data = batch["audio_data"].to(device)
             labels = batch["labels"].to(device)
-            
+
             batch_size = video_data.shape[0]
-                        
-            anchor_v, pos_v, neg_v = video_data[:, 0], video_data[:, 1], video_data[:, 2]
-            anchor_a, pos_a, neg_a = audio_data[:, 0], audio_data[:, 1], audio_data[:, 2]
-            
-            all_images  = torch.cat([anchor_v, pos_v, neg_v], dim=0).to(device)
-            all_audios  = torch.cat([anchor_a, pos_a, neg_a], dim=0).to(device)
+
+            anchor_v, pos_v, neg_v = (
+                video_data[:, 0],
+                video_data[:, 1],
+                video_data[:, 2],
+            )
+            anchor_a, pos_a, neg_a = (
+                audio_data[:, 0],
+                audio_data[:, 1],
+                audio_data[:, 2],
+            )
+
+            all_images = torch.cat([anchor_v, pos_v, neg_v], dim=0).to(device)
+            all_audios = torch.cat([anchor_a, pos_a, neg_a], dim=0).to(device)
 
             _, _, triplet_emb, triplet_probs = model(all_audios, all_images)
-        
+
             anchor_emb = triplet_emb[:batch_size]
-            pos_emb = triplet_emb[batch_size: 2*batch_size]
-            neg_emb = triplet_emb[2*batch_size: 3*batch_size]
-            
+            pos_emb = triplet_emb[batch_size : 2 * batch_size]
+            neg_emb = triplet_emb[2 * batch_size : 3 * batch_size]
+
             probs = triplet_probs[:batch_size]
             # labels = labels.long()
             loss = criterion(anchor_emb, pos_emb, neg_emb, probs, labels)
@@ -141,7 +149,7 @@ def train_fusion_model(
     device,
     num_epochs=5,
     unfreeze_schedule=None,
-    checkpoint_dir = ""
+    checkpoint_dir="",
 ):
 
     model.to(device)
@@ -181,18 +189,12 @@ def train_fusion_model(
         scheduler.step(val_loss)
         if (epoch + 1) % 5 == 0:
             path = os.path.join(checkpoint_dir, f"epoch_multimodal_{epoch+1}.pth")
-            checkpoint = {
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict()
-            }
+            checkpoint = {"epoch": epoch + 1, "model_state_dict": model.state_dict()}
             print("Saving to", path)
             # torch.save(checkpoint, path)
         if val_loss < best_loss:
             path = os.path.join(checkpoint_dir, f"best_model_{epoch+1}.pth")
-            checkpoint = {
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict()
-            }
+            checkpoint = {"epoch": epoch + 1, "model_state_dict": model.state_dict()}
             print("Saving to", path)
             # torch.save(checkpoint, path)
             best_loss = val_loss
@@ -284,5 +286,5 @@ def main():
         DEVICE,
         num_epochs=1,
         unfreeze_schedule=unfreeze_schedule,
-        checkpoint_dir = "multimodal_checkpoints",
+        checkpoint_dir="multimodal_checkpoints",
     )

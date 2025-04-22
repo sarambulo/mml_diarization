@@ -12,15 +12,18 @@ from audio import build_audio_pairs, build_audio_pair
 from combined_pairs import build_combined_pairs
 from config import *
 import numpy as np
+import traceback
+import sys
 
-START = 1
+START = 93
 UPLOAD_BATCH_SIZE = 5000
-OUTPUT_PREFIX = "batched_triplets_with_lips"
+OUTPUT_PREFIX = "test_batched_triplets_with_lips"
 
 
 def create_pairs() -> None:
     # chunked_dirs = set([dir for dir, _ in get_speaking_csv_files_s3(S3_BUCKET_NAME, S3_VIDEO_DIR, S3_SPEAKING_CSV_NAME)])
-    video_ids = list(range(START, 5))
+    traceback.print_exc(file=sys.stdout)
+    video_ids = list(range(START, 100))
     speaking_filename = "is_speaking.csv"
     face_buf, lip_buf, audio_buf, meta_buf = [], [], [], []
     batch_idx = 0
@@ -61,19 +64,20 @@ def create_pairs() -> None:
             )
 
         except Exception as e:
+            traceback.print_exc(file=sys.stdout)
             print(f"Error fetching Video {video_id}:", str(e))
 
-    if face_buf:
-        out_key = f"{OUTPUT_PREFIX}/triplet_batch_{batch_idx:05d}.npz"
-        upload_npz(
-            S3_BUCKET_NAME,
-            out_key,
-            np.stack(face_buf),
-            np.stack(lip_buf),
-            np.stack(audio_buf),
-            np.array(meta_buf),
-        )
-        print(f"✅ Uploaded final {out_key}")
+    # if face_buf:
+    #     out_key = f"{OUTPUT_PREFIX}/triplet_batch_{batch_idx:05d}.npz"
+    #     upload_npz(
+    #         S3_BUCKET_NAME,
+    #         out_key,
+    #         np.stack(face_buf),
+    #         np.stack(lip_buf),
+    #         np.stack(audio_buf),
+    #         np.array(meta_buf),
+    #     )
+    #     print(f"✅ Uploaded final {out_key}")
 
 
 if __name__ == "__main__":
