@@ -1,12 +1,8 @@
 import os
 import pandas as pd
 
-def get_rttm_labels(
-    rttm_path: str,
-    timestamps: list,
-    speaker_ids: list,
-    video_id
-):
+
+def get_rttm_labels(rttm_path: str, timestamps: list, speaker_ids: list, video_id):
     """
     Parse an RTTM file in the format:
         SPEAKER file_id chan start dur <NA> <NA> speaker_id <NA> <NA>
@@ -27,7 +23,7 @@ def get_rttm_labels(
         A list of speaker/face IDs that appear in this chunk (keys in `faces`).
         These should match the RTTM's speaker_id in column 7 (e.g., "2", "0", "1", etc.).
     csv_path : str
-        The path where the resulting CSV should be written. 
+        The path where the resulting CSV should be written.
         Example: "path/to/chunk_x/is_speaking.csv"
 
     Returns
@@ -36,8 +32,8 @@ def get_rttm_labels(
         DataFrame with columns ["face_id", "frame_id", "is_speaking"].
     """
 
-    speakers= [str(x) for x in speaker_ids]
-    
+    speakers = [str(x) for x in speaker_ids]
+
     intervals = {}
     with open(rttm_path, "r") as f:
         for line in f:
@@ -45,7 +41,7 @@ def get_rttm_labels(
             # Skip lines that don't start with 'SPEAKER' or aren't long enough
             if parts[0] != "SPEAKER":
                 continue
-            if parts[1]!=video_id:
+            if parts[1] != video_id:
                 continue
             # parts layout:
             #  0: SPEAKER
@@ -77,7 +73,7 @@ def get_rttm_labels(
             speaking_flag = False
             if face_id in intervals:
                 # print("REACH")
-                for (start, end) in intervals[face_id]:
+                for start, end in intervals[face_id]:
                     if start <= t < end:
                         speaking_flag = True
                         break

@@ -96,6 +96,7 @@ def find_overlap_conflicts(model_dirs, window_size=1.0, min_overlap=0.5):
     df = pd.DataFrame.from_records(results)
     return df.sort_values("score_variance", ascending=False)
 
+
 def main():
     # Example usage
     model_directories = [
@@ -113,5 +114,6 @@ def main():
     print("Top conflicting clips:")
     print(top_conflicts)
 
-if __name__=='__main__':
+
+if __name__ == "__main__":
     main()

@@ -19,11 +19,13 @@ save_path = f"few_train_dataset_{str(subset).replace('.', '')}"
 train_data_path = os.path.join("s3://", S3_BUCKET_NAME, S3_VIDEO_DIR)
 
 
-dataset = MSDWildChunks(data_path=S3_VIDEO_DIR,
-                        data_bucket=S3_BUCKET_NAME,
-                        partition_path=train_rttm_path,
-                        subset=subset,
-                        refresh_fileset=False)
+dataset = MSDWildChunks(
+    data_path=S3_VIDEO_DIR,
+    data_bucket=S3_BUCKET_NAME,
+    partition_path=train_rttm_path,
+    subset=subset,
+    refresh_fileset=False,
+)
 
 
 def collate_fn(batch):
@@ -45,14 +47,15 @@ def collate_fn(batch):
 
 
 import multiprocessing as mp
+
 loader = DataLoader(
-        dataset,
-        batch_size=64,
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=mp.cpu_count(),
-        pin_memory=True,
-    )
+    dataset,
+    batch_size=64,
+    shuffle=True,
+    collate_fn=collate_fn,
+    num_workers=mp.cpu_count(),
+    pin_memory=True,
+)
 
 print("Completed Initial Loader")
 for i in loader:
@@ -68,29 +71,27 @@ torch.save(dataset, buffer)
 buffer.seek(0)
 
 # Upload to S3
-s3_client = boto3.client('s3')
+s3_client = boto3.client("s3")
 s3_client.put_object(
-    Bucket=S3_BUCKET_NAME,
-    Key=f"loaders/{save_path}.pth",
-    Body=buffer.getvalue()
+    Bucket=S3_BUCKET_NAME, Key=f"loaders/{save_path}.pth", Body=buffer.getvalue()
 )
 
 
 # # Download from S3
-s3_client = boto3.client('s3')
+s3_client = boto3.client("s3")
 response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=f"loaders/{save_path}.pth")
-model_data = response['Body'].read()
+model_data = response["Body"].read()
 buffer = io.BytesIO(model_data)
 dataset2 = torch.load(buffer, weights_only=False)
 
 loader2 = DataLoader(
-        dataset2,
-        batch_size=64,
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=mp.cpu_count(),
-        pin_memory=True,
-    )
+    dataset2,
+    batch_size=64,
+    shuffle=True,
+    collate_fn=collate_fn,
+    num_workers=mp.cpu_count(),
+    pin_memory=True,
+)
 
 print("Loaded Dataset from S3")
 for i in tqdm(loader2, desc="Iterating through batches"):

@@ -5,18 +5,34 @@ from os.path import basename
 
 FRAME_SIZE = 0.25  # 4 frames per second
 
+
 def load_rttm(file_path):
     """Load RTTM file into a dataframe."""
-    df = pd.read_csv(file_path, sep=r"\s+", header=None,
-                     names=["Type", "FileID", "Channel", "Start", "Duration",
-                            "NA1", "NA2", "Speaker", "NA3", "NA4"])
+    df = pd.read_csv(
+        file_path,
+        sep=r"\s+",
+        header=None,
+        names=[
+            "Type",
+            "FileID",
+            "Channel",
+            "Start",
+            "Duration",
+            "NA1",
+            "NA2",
+            "Speaker",
+            "NA3",
+            "NA4",
+        ],
+    )
     df["End"] = df["Start"] + df["Duration"]
     return df
+
 
 def rttm_to_speaker_counts(df, frame_size=FRAME_SIZE):
     """Convert RTTM to per-frame speaker count for each file."""
     file_to_counts = {}
-    
+
     for file_id, group in df.groupby("FileID"):
         end_time = group["End"].max()
         num_frames = int(np.ceil(end_time / frame_size))
@@ -46,7 +62,7 @@ model_folders = [
     "diaper_rttms",
     "NEMO_output_rttms",
     "powerset",
-    "pyannote_rttm_output"
+    "pyannote_rttm_output",
 ]
 
 # Load and normalize GT RTTM
@@ -93,15 +109,18 @@ for model_folder in model_folders:
             pred_df["FileID"] = pred_df["FileID"].apply(lambda x: str(x).zfill(5))
             pred_counts_dict = rttm_to_speaker_counts(pred_df)
 
-            pred_counts = pred_counts_dict.get(file_id, np.zeros_like(gt_counts_dict[file_id]))
+            pred_counts = pred_counts_dict.get(
+                file_id, np.zeros_like(gt_counts_dict[file_id])
+            )
 
             rmse = compute_rmse(gt_counts_dict[file_id], pred_counts)
             if np.isnan(rmse):
-                print(f"File {file_id} has NaN RMSE (likely empty RTTM or frame mismatch)")
+                print(
+                    f"File {file_id} has NaN RMSE (likely empty RTTM or frame mismatch)"
+                )
             else:
                 rmses.append(rmse)
                 matched_files += 1
-    
 
     avg_rmse = np.mean(rmses) if rmses else float("nan")
     model_rmse[model_name] = avg_rmse

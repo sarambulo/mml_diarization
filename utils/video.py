@@ -8,8 +8,10 @@ import numpy as np
 import torchvision.transforms.v2 as ImageTransforms
 import boto3
 import os
-s3 = boto3.client('s3')
-bucket_name = 'mmml-proj'
+
+s3 = boto3.client("s3")
+bucket_name = "mmml-proj"
+
 
 def read_video(
     video_path: str, seconds: float = 3
@@ -37,8 +39,8 @@ def read_video(
     s3.download_file(bucket_name, video_path, video_path)
 
     # Create a streams to read the video and audio
-    video_stream = VideoReader(video_path, stream='video')
-    audio_stream = VideoReader(video_path, stream='audio')
+    video_stream = VideoReader(video_path, stream="video")
+    audio_stream = VideoReader(video_path, stream="audio")
     metadata = video_stream.get_metadata()
     metadata = {
         "fps": metadata["video"]["fps"][0],
@@ -46,12 +48,16 @@ def read_video(
         "sampling_rate": metadata["audio"]["framerate"][0],
     }
     print(metadata)
-    chunk_generator = generate_chunks(video_stream=video_stream, audio_stream=audio_stream, seconds=seconds)
+    chunk_generator = generate_chunks(
+        video_stream=video_stream, audio_stream=audio_stream, seconds=seconds
+    )
     os.remove(video_path)
     return chunk_generator, metadata
 
 
-def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, seconds: float):
+def generate_chunks(
+    video_stream: VideoReader, audio_stream: VideoReader, seconds: float
+):
     """
     Generator that yields consecutive chunks of 'seconds' duration
     from the given video_stream. Each yield is:
@@ -75,7 +81,7 @@ def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, second
         video_frames = []
         video_timestamps = []
         video_frame_ids = []
-        for video_frame in itertools.takewhile(lambda x: x['pts'] < end, video_stream):
+        for video_frame in itertools.takewhile(lambda x: x["pts"] < end, video_stream):
             video_frames.append(video_frame["data"])
             video_timestamps.append(video_frame["pts"])
             video_frame_ids.append(frame_counter)
@@ -84,7 +90,7 @@ def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, second
         # Gather audio frames
         # NOTE: In practice, you'd handle audio carefully to match the chunk boundaries.
         audio_frames = []
-        for audio_frame in itertools.takewhile(lambda x: x['pts'] < end, audio_stream):
+        for audio_frame in itertools.takewhile(lambda x: x["pts"] < end, audio_stream):
             audio_frames.append(audio_frame["data"])
 
         # If we didn't get any video frames, we've likely reached the end

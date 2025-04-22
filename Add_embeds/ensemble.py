@@ -80,11 +80,26 @@ class MultimodalDataset(Dataset):
 
 
 class BaggingMultimodalEnsemble(nn.Module):
-    def __init__(self, num_models=5, embedding_dim=512, reduced_dim=128, fusion_dim=512, num_speakers=10):
+    def __init__(
+        self,
+        num_models=5,
+        embedding_dim=512,
+        reduced_dim=128,
+        fusion_dim=512,
+        num_speakers=10,
+    ):
         super(BaggingMultimodalEnsemble, self).__init__()
         self.models = nn.ModuleList(
-            [AddSimpleMultimodalModel(embedding_dim, fusion_dim, num_speakers) if i % 2 == 0
-             else TensorDotMultimodalModel(embedding_dim, reduced_dim, fusion_dim, num_speakers) for i in range(num_models)]
+            [
+                (
+                    AddSimpleMultimodalModel(embedding_dim, fusion_dim, num_speakers)
+                    if i % 2 == 0
+                    else TensorDotMultimodalModel(
+                        embedding_dim, reduced_dim, fusion_dim, num_speakers
+                    )
+                )
+                for i in range(num_models)
+            ]
         )
 
     def forward(self, audio_embedding, visual_embedding):
@@ -94,21 +109,30 @@ class BaggingMultimodalEnsemble(nn.Module):
     def classify(self, fused_embedding):
         outputs = [model.classify(fused_embedding) for model in self.models]
         return torch.mean(torch.stack(outputs), dim=0)  # Average class scores
-    
+
     def predict_speakers(self, audio_embedding, visual_embedding):
-        """ Use each model to predict speakers, then return majority voting results """
-        predictions = torch.stack([torch.tensor(model.predict_speakers(audio_embedding, visual_embedding)) for model in self.models])
+        """Use each model to predict speakers, then return majority voting results"""
+        predictions = torch.stack(
+            [
+                torch.tensor(model.predict_speakers(audio_embedding, visual_embedding))
+                for model in self.models
+            ]
+        )
         majority_vote = torch.mode(predictions, dim=0).values  # Majority voting
         return majority_vote.numpy()
-    
-    def train_bag(self, dataloader, criterion, optimizer, epochs=10, device='cuda'):
+
+    def train_bag(self, dataloader, criterion, optimizer, epochs=10, device="cuda"):
         self.to(device)
         self.train()
         for epoch in range(epochs):
-            print(f'Epoch {epoch} started...')
+            print(f"Epoch {epoch} started...")
             total_loss = 0
             for audio_emb, visual_emb, labels in dataloader:
-                audio_emb, visual_emb, labels = audio_emb.to(device), visual_emb.to(device), labels.to(device)
+                audio_emb, visual_emb, labels = (
+                    audio_emb.to(device),
+                    visual_emb.to(device),
+                    labels.to(device),
+                )
 
                 optimizer.zero_grad()
                 fused_emb = self(audio_emb, visual_emb)
@@ -120,15 +144,30 @@ class BaggingMultimodalEnsemble(nn.Module):
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(dataloader)
-            print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}')
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}")
 
 
 class BoostingMultimodalEnsemble(nn.Module):
-    def __init__(self, num_models=5, embedding_dim=512, reduced_dim=128, fusion_dim=512, num_speakers=10):
+    def __init__(
+        self,
+        num_models=5,
+        embedding_dim=512,
+        reduced_dim=128,
+        fusion_dim=512,
+        num_speakers=10,
+    ):
         super(BoostingMultimodalEnsemble, self).__init__()
         self.models = nn.ModuleList(
-            [AddSimpleMultimodalModel(embedding_dim, fusion_dim, num_speakers) if i % 2 == 0
-             else TensorDotMultimodalModel(embedding_dim, reduced_dim, fusion_dim, num_speakers) for i in range(num_models)]
+            [
+                (
+                    AddSimpleMultimodalModel(embedding_dim, fusion_dim, num_speakers)
+                    if i % 2 == 0
+                    else TensorDotMultimodalModel(
+                        embedding_dim, reduced_dim, fusion_dim, num_speakers
+                    )
+                )
+                for i in range(num_models)
+            ]
         )
         self.weights = torch.ones(num_models) / num_models  # Equal weights initially
 
@@ -143,32 +182,44 @@ class BoostingMultimodalEnsemble(nn.Module):
         for i, model in enumerate(self.models):
             outputs.append(self.weights[i] * model.classify(fused_embedding))
         return torch.sum(torch.stack(outputs), dim=0)  # Weighted sum of class scores
-    
+
     def predict_speakers(self, audio_embedding, visual_embedding):
-        """ Use weighted sum of predictions for boosting """
+        """Use weighted sum of predictions for boosting"""
         weighted_outputs = []
         for i, model in enumerate(self.models):
-            weighted_outputs.append(self.weights[i] * torch.tensor(model.predict_speakers(audio_embedding, visual_embedding), dtype=torch.float32))
-        weighted_prediction = torch.sum(torch.stack(weighted_outputs), dim=0)  # Sum weighted votes
-        return torch.round(weighted_prediction).numpy().astype(int)  # Convert to integer labels
-    
+            weighted_outputs.append(
+                self.weights[i]
+                * torch.tensor(
+                    model.predict_speakers(audio_embedding, visual_embedding),
+                    dtype=torch.float32,
+                )
+            )
+        weighted_prediction = torch.sum(
+            torch.stack(weighted_outputs), dim=0
+        )  # Sum weighted votes
+        return (
+            torch.round(weighted_prediction).numpy().astype(int)
+        )  # Convert to integer labels
+
     def update_weights(self, losses):
-        """ Update model weights based on their performance (lower loss = higher weight) """
-        losses = torch.tensor(losses, dtype=torch.float32)  
+        """Update model weights based on their performance (lower loss = higher weight)"""
+        losses = torch.tensor(losses, dtype=torch.float32)
         self.weights = torch.exp(-losses)  # Higher loss -> Lower weight
         self.weights /= torch.sum(self.weights)  # Normalize to sum to 1
-    
-    def train_boost(self, dataloader, criterion, optimizer, epochs=10, device='cuda'):
+
+    def train_boost(self, dataloader, criterion, optimizer, epochs=10, device="cuda"):
         self.to(device)
         self.train()
 
         for epoch in range(epochs):
-            print(f'Epoch {epoch} started...')
+            print(f"Epoch {epoch} started...")
             total_losses = []
 
             for audio_emb, visual_emb, labels in dataloader:
                 audio_emb, visual_emb, labels = (
-                    audio_emb.to(device), visual_emb.to(device), labels.to(device)
+                    audio_emb.to(device),
+                    visual_emb.to(device),
+                    labels.to(device),
                 )
 
                 optimizer.zero_grad()
@@ -186,13 +237,12 @@ class BoostingMultimodalEnsemble(nn.Module):
                 total_losses.append(sum(model_losses) / len(model_losses))
 
             avg_loss = sum(total_losses) / len(total_losses)
-            print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}')
-
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}")
 
 
 # **Bagging Training**
 def when_classify_bagging():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     audio_embeddings = torch.randn(100, 512)
     visual_embeddings = torch.randn(100, 512)
@@ -211,7 +261,7 @@ def when_classify_bagging():
 
 # **Boosting Training**
 def when_classify_boosting():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     audio_embeddings = torch.randn(100, 512)
     visual_embeddings = torch.randn(100, 512)
