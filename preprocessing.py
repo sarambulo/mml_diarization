@@ -66,12 +66,12 @@ def main():
     # print(len(video_files))
     section = len(video_files)//3
     video_start = 0
-    video_end = section 
+    video_end = section
     print("starting video_id:", video_start)
     print("ending_video_id:", video_end)
 
-    video_files = video_files[:5]
-    # video_files = video_files[video_start:video_end]
+    # video_files = video_files[:5]
+    video_files = video_files[video_start:video_end]
 
     for video_file in video_files:
         try:
