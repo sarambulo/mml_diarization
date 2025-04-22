@@ -115,7 +115,7 @@ def get_non_speaking_negative_pair(anchor_speaker_id, current_chunk, chunk_speak
             if other_speaker_frames:
                 neg_face_id, neg_frame_id = random.choice(other_speaker_frames)
                 return chunk_id, neg_face_id, neg_frame_id
-    return None
+    return None, None, None
 
 
 # INPUT: is_speaking.csv
@@ -128,6 +128,7 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
         names=["speaker_id", "frame_id", "is_speaking", "video_id", "chunk_id"],
     )
     df = df.loc[:, df.columns != "timestamp"].astype(int)
+    vid = input_file_path.split(os.sep)[4]
 
     speaker_frames, chunk_speakers = create_lookups(df)
     # print(speaker_frames)
@@ -182,6 +183,8 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_speaker_id"].append(neg_speaker)
                 pair_info["neg_frame_id"].append(neg_frame)
             else:
+                with open("skipped.txt", "a") as f:
+                    f.write(f"[Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n")
                 print(
                     f"skipping anchor {anchor_speaker} chunk {current_chunk} frame {current_frame} from speaking frames"
                 )
@@ -206,10 +209,9 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_chunk_id"].append(neg_chunk)
                 pair_info["neg_speaker_id"].append(neg_speaker)
                 pair_info["neg_frame_id"].append(neg_frame)
-            # else:
-            #     print(
-            #         f"No pair found: Pos Found = {pos_chunk!=None} Neg Found = {neg_chunk!=None}"
-            #     )
+            else:
+                with open("skipped.txt", "a") as f:
+                    f.write(f"[Non-Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n")
     save_pair_info(pair_info, output_file_path)
     return pair_info
 

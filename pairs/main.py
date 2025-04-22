@@ -19,11 +19,16 @@ START = 93
 UPLOAD_BATCH_SIZE = 5000
 OUTPUT_PREFIX = "test_batched_triplets_with_lips"
 
+section = 3144 // 3
+video_start = 1
+video_end = section
+print("starting video_id:", video_start)
+print("ending_video_id:", video_end)
+
 
 def create_pairs() -> None:
     # chunked_dirs = set([dir for dir, _ in get_speaking_csv_files_s3(S3_BUCKET_NAME, S3_VIDEO_DIR, S3_SPEAKING_CSV_NAME)])
-    traceback.print_exc(file=sys.stdout)
-    video_ids = list(range(START, 100))
+    video_ids = list(range(video_start, video_end))
     speaking_filename = "is_speaking.csv"
     face_buf, lip_buf, audio_buf, meta_buf = [], [], [], []
     batch_idx = 0
@@ -64,20 +69,23 @@ def create_pairs() -> None:
             )
 
         except Exception as e:
-            traceback.print_exc(file=sys.stdout)
+            with open("error.txt", "a") as f:
+                f.write(f"[VideoId]: {video_id}\n")
+                f.write(f"[Unhandled Error] {repr(e)}\n")
+                f.write(traceback.format_exc()) 
             print(f"Error fetching Video {video_id}:", str(e))
 
-    # if face_buf:
-    #     out_key = f"{OUTPUT_PREFIX}/triplet_batch_{batch_idx:05d}.npz"
-    #     upload_npz(
-    #         S3_BUCKET_NAME,
-    #         out_key,
-    #         np.stack(face_buf),
-    #         np.stack(lip_buf),
-    #         np.stack(audio_buf),
-    #         np.array(meta_buf),
-    #     )
-    #     print(f"✅ Uploaded final {out_key}")
+    if face_buf:
+        out_key = f"{OUTPUT_PREFIX}/leftover_triplet_batch_{batch_idx:05d}.npz"
+        upload_npz(
+            S3_BUCKET_NAME,
+            out_key,
+            np.stack(face_buf),
+            np.stack(lip_buf),
+            np.stack(audio_buf),
+            np.array(meta_buf),
+        )
+        print(f"✅ Uploaded final {out_key}")
 
 
 if __name__ == "__main__":
