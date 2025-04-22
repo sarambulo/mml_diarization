@@ -68,7 +68,7 @@ def create_pairs() -> None:
                 batch_idx=batch_idx,
             )
         except FileNotFoundError as fnfe:
-            print(f"Error fetching file for {video_id}:", str(e))
+            print(f"Error fetching file for {video_id}:", str(fnfe))
         except Exception as e:
             with open("error.txt", "a") as f:
                 f.write(f"[VideoId]: {video_id}\n")
