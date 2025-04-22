@@ -51,8 +51,6 @@ def build_combined_pairs(
             neg_chunk_id,
             neg_speaker_id,
             neg_frame_id,
-            video_flag,
-            audio_flag,
         ) = row.values
 
         if frame_id % 4 == 0:

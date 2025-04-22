@@ -17,7 +17,7 @@ import sys
 
 START = 93
 UPLOAD_BATCH_SIZE = 5000
-OUTPUT_PREFIX = "test_batched_triplets_with_lips"
+OUTPUT_PREFIX = "triplet_batches"
 
 section = 3144 // 3
 video_start = 1
@@ -67,7 +67,8 @@ def create_pairs() -> None:
                 audio_type="melspectrogram",
                 batch_idx=batch_idx,
             )
-
+        except FileNotFoundError as fnfe:
+            print(f"Error fetching file for {video_id}:", str(e))
         except Exception as e:
             with open("error.txt", "a") as f:
                 f.write(f"[VideoId]: {video_id}\n")
@@ -85,7 +86,7 @@ def create_pairs() -> None:
             np.stack(audio_buf),
             np.array(meta_buf),
         )
-        print(f"✅ Uploaded final {out_key}")
+        print(f"✅ Uploaded {len(face_buf)} pairs to {out_key}")
 
 
 if __name__ == "__main__":
