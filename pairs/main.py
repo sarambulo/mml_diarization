@@ -30,7 +30,7 @@ def create_pairs() -> None:
     for video_id in video_ids:
         try:
             video_id = str(video_id).zfill(5)
-            video_dir = f"s3://mmml-proj/preprocessed/{video_id}"
+            video_dir = f"s3://mmml-proj/preprocessed_2/{video_id}"
 
             print("Building Pairs for Video", video_id)
             pairs_filename = (
@@ -82,10 +82,10 @@ def create_pairs() -> None:
 
 if __name__ == "__main__":
     create_pairs()
-    # build_combined_pairs(S3_BUCKET_NAME, "00005", "s3://mmml-proj/preprocessed/00001/pairs.csv", [], [], [], [], batch_size=100, outpath="test", audio_type="melspectrogram")
+    # build_combined_pairs(S3_BUCKET_NAME, "00005", "s3://mmml-proj/preprocessed_2/00001/pairs.csv", [], [], [], [], batch_size=100, outpath="test", audio_type="melspectrogram")
     # files = get_speaking_csv_files_s3(S3_BUCKET_NAME, S3_VIDEO_DIR, S3_SPEAKING_CSV_NAME)
     # print(len(files))
     # print(files[:10])
 
-    # arr = s3_load_numpy("mmml-proj", "preprocessed/00005/Chunk_38/lip_0.npy")
+    # arr = s3_load_numpy("mmml-proj", "preprocessed_2/00005/Chunk_38/lip_0.npy")
     # print(arr.shape)

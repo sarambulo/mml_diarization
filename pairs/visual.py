@@ -10,7 +10,7 @@ from collections import defaultdict
 
 def load_video_frames(bucket_name, vid, visual_type):
     # print(visual_type)
-    prefix = os.path.join("preprocessed", vid)
+    prefix = os.path.join("preprocessed_2", vid)
     face_pattern = re.compile(rf"^{prefix}/Chunk_(\d+)/{visual_type}_(\d+)\.npy$")
     temp = defaultdict(dict)
     for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
@@ -50,9 +50,8 @@ def build_visual_pair(
     return pair
 
 
-
 def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
-    pairs_dir = os.path.join("preprocessed", vid, "visual_pairs")
+    pairs_dir = os.path.join("preprocessed_2", vid, "visual_pairs")
 
     pairs_df = pd.read_csv(pairs_path)
 
@@ -74,10 +73,10 @@ def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
         ) = row.values
         if video_flag == 1 and frame_id % VIDEO_FPS == 0:
             pos_path = os.path.join(
-                "preprocessed", vid, f"Chunk_{pos_chunk_id}", f"face_{speaker_id}.npy"
+                "preprocessed_2", vid, f"Chunk_{pos_chunk_id}", f"face_{speaker_id}.npy"
             )
             neg_path = os.path.join(
-                "preprocessed",
+                "preprocessed_2",
                 vid,
                 f"Chunk_{neg_chunk_id}",
                 f"face_{neg_speaker_id}.npy",
@@ -87,7 +86,7 @@ def build_visual_pairs(bucket, vid, pairs_path, visualize=False):
                 curr_anchor_chunk = chunk_id
                 curr_anchor_speaker = speaker_id
                 anchor_path = os.path.join(
-                    "preprocessed",
+                    "preprocessed_2",
                     vid,
                     f"Chunk_{curr_anchor_chunk}",
                     f"face_{curr_anchor_speaker}.npy",

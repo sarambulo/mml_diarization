@@ -224,4 +224,4 @@ def save_pair_info(pair_info_dict, output_file_path):
 
 
 # testing
-# choose_and_save_pairs_for_video("../preprocessed/00001/is_speaking.csv", "pairs_test.csv")
+# choose_and_save_pairs_for_video("../preprocessed_2/00001/is_speaking.csv", "pairs_test.csv")

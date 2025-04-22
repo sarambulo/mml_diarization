@@ -26,7 +26,6 @@ def build_combined_pairs(
     audio_type,
     batch_idx,
 ):
-    pairs_dir = os.path.join("preprocessed", vid, "visual_pairs")
     pairs_df = pd.read_csv(pairs_path)
 
     face_frames = load_video_frames(bucket, vid, visual_type="face")
@@ -39,7 +38,7 @@ def build_combined_pairs(
     # for chunk_id in face_frames:
     #     for speaker_id in face_frames[chunk_id]:
     #         plot_images_from_array(face_frames[chunk_id][speaker_id], f"eda/chunks_00007/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_faces.png")
-            # plot_images_from_array(lip_frames[chunk_id][speaker_id], f"eda/chunks_new/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_lips.png")
+    # plot_images_from_array(lip_frames[chunk_id][speaker_id], f"eda/chunks_new/{vid}_Chunk{chunk_id}_Speaker{speaker_id}_lips.png")
     print(pairs_df["chunk_id"].unique())
     for i, row in tqdm(pairs_df.iterrows(), total=len(pairs_df), desc="Building Pairs"):
         (
@@ -68,7 +67,7 @@ def build_combined_pairs(
                 f"neg_frame_id: {neg_frame_id}, "
                 f"neg_speaker_id: {neg_speaker_id}"
             )
-        
+
             face_data = build_visual_pair(
                 face_frames,
                 chunk_id,

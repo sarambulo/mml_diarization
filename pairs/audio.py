@@ -7,7 +7,7 @@ import re
 
 
 def load_audio_frames(bucket_name, vid, audio_type):
-    prefix = os.path.join("preprocessed", vid)
+    prefix = os.path.join("preprocessed_2", vid)
     audio_pattern = re.compile(rf"^{prefix}/Chunk_(\d+)/{audio_type}.npy$")
     temp = {}
     for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
@@ -42,7 +42,7 @@ def build_audio_pair(
 
 
 def build_audio_pairs(bucket, vid, pairs_path, audio_type, visualize=False):
-    pairs_dir = os.path.join("preprocessed", vid, f"{audio_type}_audio_pairs")
+    pairs_dir = os.path.join("preprocessed_2", vid, f"{audio_type}_audio_pairs")
 
     pairs_df = pd.read_csv(pairs_path)
 
@@ -63,16 +63,16 @@ def build_audio_pairs(bucket, vid, pairs_path, audio_type, visualize=False):
         ) = row.values
         if audio_flag == 1 and frame_id % VIDEO_FPS == 0:
             pos_path = os.path.join(
-                "preprocessed", vid, f"Chunk_{pos_chunk_id}", f"{audio_type}.npy"
+                "preprocessed_2", vid, f"Chunk_{pos_chunk_id}", f"{audio_type}.npy"
             )
             neg_path = os.path.join(
-                "preprocessed", vid, f"Chunk_{neg_chunk_id}", f"{audio_type}.npy"
+                "preprocessed_2", vid, f"Chunk_{neg_chunk_id}", f"{audio_type}.npy"
             )
 
             if chunk_id != curr_anchor_chunk:
                 curr_anchor_chunk = chunk_id
                 anchor_path = os.path.join(
-                    "preprocessed",
+                    "preprocessed_2",
                     vid,
                     f"Chunk_{curr_anchor_chunk}",
                     f"{audio_type}.npy",
