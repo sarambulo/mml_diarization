@@ -9,6 +9,8 @@ import shutil
 from pathlib import Path
 from tqdm import tqdm
 from pairs.utils import s3_save_numpy
+from utils.lip_coordinates import extract_and_crop_lips
+import dlib
 import boto3
 
 bucket_name = 'mmml-proj'
@@ -37,7 +39,9 @@ def main():
     args = parser.parse_args()
 
     # video_files = sorted(glob.glob(os.path.join(args.data_dir, "*.mp4")))
-
+    predictor_path = "./utils/shape_predictor_68_face_landmarks_GTX.dat"
+    lip_predictor = dlib.shape_predictor(predictor_path)
+    
     MAX_CHUNKS = args.total_seconds // args.seconds
 
     # Clean the output directory
@@ -58,9 +62,16 @@ def main():
         for obj in page['Contents']
         if obj['Key'].endswith(".mp4")
     ]
-    # print(len(video_files)
+    
+    # print(len(video_files))
+    section = len(video_files)//3
+    video_start = 0
+    video_end = section 
+    print("starting video_id:", video_start)
+    print("ending_video_id:", video_end)
 
-    done = 708
+    video_files = video_files[:5]
+    # video_files = video_files[video_start:video_end]
 
     for video_file in video_files:
         try:
@@ -69,8 +80,8 @@ def main():
             # Create arguments for build_chunks
             base_name = os.path.basename(video_file)
             video_id = os.path.splitext(base_name)[0]
-            if int(video_id) < done:
-                print("Already did", video_id)
+            if (int(video_id) > video_end) or (int(video_id) < video_start):
+                print("Not in range", video_id)
                 continue
             print(f"Loading {video_file}")
             bounding_boxes_path = os.path.join(args.data_dir, f"{video_id}.csv")
@@ -86,6 +97,7 @@ def main():
                 video_path=video_file,
                 bounding_boxes_path=bounding_boxes_path,
                 rttm_path=args.rttm_path,
+                video_id = video_id,
                 seconds=args.seconds,
                 downsampling_factor=args.downsampling_factor,
                 img_height=args.img_height,
@@ -126,9 +138,13 @@ def main():
                 for speaker_id, face_dict in faces.items():
                     # Bounding boxes
                     bbox_array = face_dict.numpy()
+                    lip_array = extract_and_crop_lips(bbox_array, lip_predictor)
+                    
                     bbox_file = os.path.join(chunk_dir, f"face_{speaker_id}.npy")
+                    lip_file = os.path.join(chunk_dir, f"lip_{speaker_id}.npy")
                     # np.save(bbox_file, bbox_array)
                     s3_save_numpy(bbox_array, bucket_name, bbox_file)
+                    s3_save_numpy(lip_array, bucket_name, lip_file)
             
             # Video level labels
             if all_is_speaking:

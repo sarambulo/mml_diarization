@@ -3,13 +3,10 @@ from .video import read_video, downsample_video, parse_bounding_boxes, extract_f
 from .audio import flatten_audio, transform_audio
 from .rttm import get_rttm_labels
 import math
-from tqdm import tqdm
-
 
 def build_chunks(
-      video_path: str, bounding_boxes_path: str, rttm_path: str, seconds: int = 3,
-      downsampling_factor: int = 5, img_height: int = 112, img_width: int = 112, scale: bool = True,
-      max_chunks: int = 60
+      video_path: str, bounding_boxes_path: str, rttm_path: str, video_id, seconds: int = 3,
+      downsampling_factor: int = 5, img_height: int = 112, img_width: int = 112, scale: bool = True,max_chunks: int = 60
    ) -> List[Tuple]:
    """
    Returns a list of chunks. Each chunk is a tuple of three elements:
@@ -17,7 +14,7 @@ def build_chunks(
    - Melspectrogram
    - Is Speaking: pd.DataFrame with cols "face_id", "frame_id", "is_speaking"
    """
-
+   
    # Get video reader (generator)
    video_reader, metadata = read_video(video_path=video_path, seconds=seconds)
    bounding_boxes = parse_bounding_boxes(bounding_boxes_path)
@@ -45,9 +42,8 @@ def build_chunks(
             video_frames=video_data, frame_ids=frame_ids,
             bounding_boxes=bounding_boxes
          )
-      except Exception as e:
-         # print(e)
-         raise ValueError(f'Failed extracting faces for video {video_path} -- {e}')
+      except:
+         raise ValueError(f'Failed extracting faces for video {video_path}')
       for speaker_id in faces:
          faces[speaker_id] = transform_video(
             video_frames=faces[speaker_id], height=img_height, width=img_width, scale=scale
@@ -55,6 +51,6 @@ def build_chunks(
 
       # Labels
       speaker_ids = list(faces.keys())
-      is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids)
+      is_speaking = get_rttm_labels(rttm_path, timestamps, speaker_ids=speaker_ids, video_id=video_id)
       chunks.append((faces, melspectrogram, mfcc, is_speaking))
    return chunks
