@@ -10,7 +10,8 @@ from torchsummaryX import summary
 import torch
 import pandas as pd
 import torch.nn.functional as F
-from LipResnet import VisualOnlyModel
+from LipResnet import VisualLipModel
+from VisualOnly import VisualOnlyModel
 from sklearn.cluster import AgglomerativeClustering
 from losses.DiarizationLoss import DiarizationLoss
 from tqdm import tqdm
@@ -68,22 +69,7 @@ def train_epoch(model, dataloader, optimizer, criterion, all_records):
         optimizer.zero_grad()  # Zero gradients
         batch_size = labels.shape[0]
         # Join all inputs
-
-        # features = list(zip(anchors, positive_pairs, negative_pairs))
-        # print(len(features))
-        # # feature: [(batch_size, ...), (batch_size, ...), (batch_size, ...)]
-        # # send to cuda
-        # for index, feature in enumerate(features):
-        #     features[index] = torch.concat(feature, dim=0).to(DEVICE)
-        #     # feature: (batch_size * 3, ...)
-        # anchors   = anchors.to(DEVICE)   # shape [B, 3, H, W]
-        # positives = positives.to(DEVICE) # shape [B, 3, H, W]
-        # negatives = negatives.to(DEVICE)
-        # labels = labels.to(DEVICE)
         all_images = torch.cat([anchors, positives, negatives], dim=0).to(DEVICE)
-        # print(anchors.shape)
-        # print(positives.shape)
-        # print(negatives.shape)
         # forward
         with torch.amp.autocast(DEVICE):  # This implements mixed precision. Thats it!
             embeddings, probs = model(all_images)
@@ -93,21 +79,17 @@ def train_epoch(model, dataloader, optimizer, criterion, all_records):
             logits = logits[:batch_size]
 
             pred_labels = (probs >= 0.5).float()
-            # print(logits)
-            # Use the type of output depending on the loss function you want to use
-            labels = labels.float()
+            labels=labels.float()
             loss = criterion(anchors, positive_pairs, negative_pairs, probs, labels)
 
-        loss.backward()  # This is a replacement for loss.backward()
-        optimizer.step()  # This is a replacement for optimizer.step()
-        # print(logits)
-        # print(pred_labels)
+        loss.backward()
+        optimizer.step() 
+        
+
         accuracy = get_metrics(pred_labels, labels)
-        # print(accuracy)
         avg_loss = (avg_loss * i + loss.item()) / (i + 1)
         avg_accuracy = (avg_accuracy * i + accuracy) / (i + 1)
 
-        # tqdm lets you add some details so you can monitor training as you train.
         batch_bar.set_postfix(
             acc="{:.04%} ({:.04%})".format(accuracy, avg_accuracy),
             loss="{:.04f} ({:.04f})".format(loss.item(), avg_loss),
@@ -208,7 +190,8 @@ for batch_idx, (visual_data, lip_data, audio_data, is_speaking) in enumerate(
     # If you just want to check the first batch, break after printing:
     break
 
-model = VisualOnlyModel(embedding_dims=512, num_classes=2)
+
+model = VisualOnlyModel(embedding_dims=512) 
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
 criterion = DiarizationLoss(0.5, 0.5)

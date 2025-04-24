@@ -1,8 +1,8 @@
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch
-from ast_models import ASTModel  # assuming ASTModel is available
-from ast_encoder import AudioASTEncoder  # your encoder wrapper
+# from models.ast_models import ASTModel  # assuming ASTModel is available
+from models.ast_encoder import AudioASTEncoder  # your encoder wrapper
 import sys
 import os
 
@@ -10,18 +10,16 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # from utils.metrics import rttm_to_annotations, calculate_metrics_for_dataset
 from pathlib import Path
 from datasets.MSDWild import MSDWildChunks
-from audio_model import AudioTripletDatasetWithLabels  # your existing dataset
+from models.audio_model import AudioTripletDatasetWithLabels  # your existing dataset
 
 
 def generate_ast_embeddings_from_msdwild():
-    data_path = "../preprocessed"
-    partition_path = "../data_sample/few_train.rttm"
-    msd_dataset = MSDWildChunks(
-        data_path=data_path, partition_path=partition_path, subset=1.0
-    )
-
-    dataset = AudioTripletDatasetWithLabels(msd_dataset, augment=False)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+    data_path = "./preprocessed"
+    partition_path = "./data_sample/few_train.rttm"
+    dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path, subset=1.0)
+    
+    # dataset = AudioTripletDatasetWi?thLabels(msd_dataset, augment=False) 
+    dataloader = DataLoader(dataset, batch_size= 32, shuffle=False)
 
     encoder = AudioASTEncoder()  # returns [B, 768]
     encoder.eval()
@@ -34,25 +32,18 @@ def generate_ast_embeddings_from_msdwild():
         for sample in tqdm(dataloader):
             if sample is None or sample[0] is None:
                 continue
-            anchor, _, _, label = sample
-            anchor = anchor.squeeze(0)  # [1, 40, 64] → [40, 64]
-            anchor = anchor.T  # to [64, 40] → pad to [1024, 128] if needed
+                
+            _, audio_batch, label = sample
+            
+            anchors   = audio_batch[:, 0, :, :]
+            positives = audio_batch[:, 1, :, :]
+            negatives = audio_batch[:, 2, :, :] 
+            all_audios = torch.cat([anchors, positives, negatives], dim=0)
+            print(all_audios.shape)
+            # anchor, _, _, label = sample
 
-            # resize to [1024, 128] (required for AST)
-            padded = torch.zeros((1024, 128))
-            anchor = anchor.squeeze()  # makes it [F, T]
-            if anchor.dim() != 2:
-                raise ValueError(
-                    f"Expected 2D mel spectrogram, got shape {anchor.shape}"
-                )
-            T, F = anchor.shape
+            embedding = encoder(all_audios).cpu()
 
-            padded[: min(1024, T), : min(128, F)] = anchor[
-                : min(1024, T), : min(128, F)
-            ]
-            padded = padded.unsqueeze(0)  # [1, 1024, 128]
-
-            embedding = encoder(padded).cpu()
             all_embeddings.append(embedding.squeeze(0))
             all_labels.append(label.item())
 

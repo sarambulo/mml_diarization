@@ -86,57 +86,30 @@ class ResNet34(torch.nn.Module):
 
 
 class VisualSpeakerEncoder(torch.nn.Module):
-    def __init__(
-        self,
-        embedding_dims: int = 1024,
-        weights_path: str = "models/visual_encoder.pth",
-    ):
-        super().__init__()
-        self.backbone = ResNet34(embedding_dims)
-        if weights_path:
-            model_state_dict = torch.load(weights_path, weights_only=False)
-            model_state_dict = {
-                key: model_state_dict[key]
-                for key in model_state_dict
-                if key.startswith("backbone")
-            }
-            self.load_state_dict(model_state_dict)
-            self.backbone.requires_grad_(False)
-
-    def forward(self, X):
-        return self.backbone(X)
-
+   def __init__(self, embedding_dim:int = 512, weights_path: str = 'models/visual_encoder.pth'):
+      super().__init__()
+      self.backbone = ResNet34(embedding_dim)
+      if weights_path:
+         model_state_dict = torch.load(weights_path, weights_only=False)
+         model_state_dict = {key:model_state_dict[key] for key in model_state_dict if key.startswith('backbone')}
+         self.load_state_dict(model_state_dict)
+         self.backbone.requires_grad_(False)
+   def forward(self, X):
+      return self.backbone(X)
 
 class VisualOnlyModel(torch.nn.Module):
-    def __init__(self, embedding_dims, weights_path: str = "models/visual_encoder.pth"):
-        super().__init__()
-        self.backbone = ResNet34(embedding_dims)
-        self.classifier = torch.nn.Linear(embedding_dims, 1)
-        if weights_path:
-            checkpoint = torch.load(weights_path, weights_only=False)
-            model_state_dict = checkpoint["model_state_dict"]
-            self.load_state_dict(model_state_dict)
+   def __init__(self, embedding_dim, weights_path: str = 'models/visual_encoder.pth'):
+      super().__init__()
+      self.backbone = ResNet34(embedding_dim)
+      self.classifier = torch.nn.Linear(embedding_dim, 1)
+      if weights_path:
+         checkpoint = torch.load(weights_path, weights_only=False)
+         model_state_dict = checkpoint['model_state_dict']
+         self.load_state_dict(model_state_dict)
 
-    def forward(self, features):
-        X = features[2]
-        embedding = self.visual_encoder(X)
-        logits = self.classifier(embedding)
-        logits = logits.squeeze(1)
-        return embedding, logits
-
-    @torch.no_grad()
-    def predict_frame(self, X):
-        # Set eval mode
-        self.eval()
-        # Call forward with no gradients and in inference mode
-        with torch.inference_mode():
-            embedding, active_speaker = self.forward(X)
-        return embedding, active_speaker
-
-    def agg_clustering(self, embeddings, n_faces):
-        clustering = AgglomerativeClustering(
-            n_clusters=n_faces, metric="euclidean", linkage="ward"
-        )
-
-        cluster_labels = clustering.fit_predict(embeddings)
-        return cluster_labels
+   def forward(self, x):
+      embedding = self.visual_encoder(x)
+      logits = self.classifier(embedding)
+      logits = logits.squeeze(1)
+      probs = torch.sigmoid(logits)
+      return embedding, probs

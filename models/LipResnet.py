@@ -27,20 +27,19 @@ class VisualEmbedding(torch.nn.Module):
         pixel_values = (bbox_tensor - mean) / std
         return pixel_values
 
+class VisualLipModel(torch.nn.Module):
+   def __init__(self, embedding_dim=512):
+      super().__init__()
+      self.visual_encoder = VisualEmbedding()
+      self.classifier = torch.nn.Linear(embedding_dim, 1)
 
-class VisualFullModel(torch.nn.Module):
-    def __init__(self, embedding_dim=512):
-        super().__init__()
-        self.visual_encoder = VisualEmbedding()
-        self.classifier = torch.nn.Linear(embedding_dim, 1)
-
-    def forward(self, x):
-        embedding = self.visual_encoder(x)
-        logits = self.classifier(embedding)
-        logits = logits.squeeze(1)
-        probs = torch.sigmoid(logits)
-        return embedding, probs
-
+   def forward(self, x):
+      embedding = self.visual_encoder(x)
+      logits = self.classifier(embedding)
+      logits = logits.squeeze(1)
+      probs = torch.sigmoid(logits)
+      return embedding, probs
+  
 
 ##TESTING
 # data_path = '../preprocessed/00001/Chunk_1/face_0.npy'
