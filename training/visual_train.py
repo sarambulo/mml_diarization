@@ -10,26 +10,26 @@ from torchsummaryX import summary
 import torch
 import pandas as pd
 import torch.nn.functional as F
+from models.LipResnet import VisualLipModel
 from models.VisualOnly import VisualOnlyModel
 from sklearn.cluster import AgglomerativeClustering
 from losses.DiarizationLoss import DiarizationLoss
 from tqdm import tqdm
 from torch.utils.data import Subset
-from pairs.config import S3_BUCKET_NAME, S3_VIDEO_DIR
-
 
 CHECKPOINT_PATH = "checkpoints"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 @torch.no_grad()
-def get_metrics(logits, labels):
+def get_metrics(pred_labels, labels):
     # print(logits)
     # print(labels)
-    pred_labels = torch.argmax(logits, dim=-1)
+    # pred_labels = torch.argmax(logits, dim=-1)
     # print(pred_labels)
     # n = labels.shape[0]
     # print(labels)
+    pred_labels, labels = pred_labels.to(DEVICE), labels.to(DEVICE)
     accuracy = (pred_labels == labels).float().mean()
     # accuracy = n_correct / n
     return accuracy
@@ -60,8 +60,8 @@ def train_epoch(model, dataloader, optimizer, criterion):
     avg_accuracy = 0
     num_batches = len(dataloader)
     for i, batch in enumerate(dataloader):
-        visual_batch = batch[0]
-        labels = batch[2]
+        visual_batch = batch['video_data']
+        labels = batch['labels']
         # print(visual_batch.shape)
         # print(len(labels))
         anchors = visual_batch[:, 0, :, :, :]  # shape (B, 3, H, W)
@@ -70,46 +70,28 @@ def train_epoch(model, dataloader, optimizer, criterion):
         optimizer.zero_grad()  # Zero gradients
         batch_size = labels.shape[0]
         # Join all inputs
-
-        # features = list(zip(anchors, positive_pairs, negative_pairs))
-        # print(len(features))
-        # # feature: [(batch_size, ...), (batch_size, ...), (batch_size, ...)]
-        # # send to cuda
-        # for index, feature in enumerate(features):
-        #     features[index] = torch.concat(feature, dim=0).to(DEVICE)
-        #     # feature: (batch_size * 3, ...)
-        # anchors   = anchors.to(DEVICE)   # shape [B, 3, H, W]
-        # positives = positives.to(DEVICE) # shape [B, 3, H, W]
-        # negatives = negatives.to(DEVICE)
-        # labels = labels.to(DEVICE)
         all_images = torch.cat([anchors, positives, negatives], dim=0).to(DEVICE)
-        # print(anchors.shape)
-        # print(positives.shape)
-        # print(negatives.shape)
         # forward
+        # print(all_images.dtype)
         with torch.amp.autocast(DEVICE):  # This implements mixed precision. Thats it!
-            embeddings, logits = model((None, None, all_images))
+            embeddings, probs = model(all_images)
             anchors = embeddings[:batch_size]
             positive_pairs = embeddings[batch_size : 2 * batch_size]
             negative_pairs = embeddings[2 * batch_size : 3 * batch_size]
-            logits = logits[:batch_size]
-            probs = torch.sigmoid(logits)
+            probs = probs[:batch_size]
+
             pred_labels = (probs >= 0.5).float()
-            # print(logits)
-            # Use the type of output depending on the loss function you want to use
-            labels = labels.float()
+            labels=labels.float()
             loss = criterion(anchors, positive_pairs, negative_pairs, probs, labels)
 
-        loss.backward()  # This is a replacement for loss.backward()
-        optimizer.step()  # This is a replacement for optimizer.step()
-        # print(logits)
-        # print(pred_labels)
+        loss.backward()
+        optimizer.step() 
+        
+
         accuracy = get_metrics(pred_labels, labels)
-        # print(accuracy)
         avg_loss = (avg_loss * i + loss.item()) / (i + 1)
         avg_accuracy = (avg_accuracy * i + accuracy) / (i + 1)
 
-        # tqdm lets you add some details so you can monitor training as you train.
         batch_bar.set_postfix(
             acc="{:.04%} ({:.04%})".format(accuracy, avg_accuracy),
             loss="{:.04f} ({:.04f})".format(loss.item(), avg_loss),
@@ -132,8 +114,8 @@ def evaluate_epoch(model, dataloader, criterion):
     count = 0
 
     for i, batch in enumerate(dataloader):
-        visual_batch = batch[0]
-        labels = batch[2]
+        visual_batch = batch['video_data']
+        labels = batch['labels']
 
         B = labels.shape[0]
         anchors = visual_batch[:, 0, :, :, :]  # (B, 3, H, W)
@@ -142,18 +124,18 @@ def evaluate_epoch(model, dataloader, criterion):
 
         all_images = torch.cat([anchors, positives, negatives], dim=0).to(DEVICE)
 
-        embeddings, logits = model((None, None, all_images))
+        embeddings, probs = model(all_images)
 
         anchors_emb = embeddings[0:B]
         pos_emb = embeddings[B : 2 * B]
         neg_emb = embeddings[2 * B : 3 * B]
-        logits = logits[:B]
+        probs = probs[:B]
         labels = labels.float().to(DEVICE)
-        probs = torch.sigmoid(logits)
+        # probs = torch.sigmoid(logits)
         loss = criterion(anchors_emb, pos_emb, neg_emb, probs, labels)
 
         # Accuracy
-        accuracy = get_metrics(logits, labels)
+        accuracy = get_metrics(probs, labels)
 
         # Running average
         avg_loss = (avg_loss * i + loss.item()) / (i + 1)
@@ -164,115 +146,110 @@ def evaluate_epoch(model, dataloader, criterion):
     return avg_accuracy * 100, avg_loss
 
 
-if __name__ == "__main__":
-    data_path = "preprocessed"
-    partition_path_train = "few.train.rttm"
-    partition_path_val = "few.train.rttm"
-    # train_dataset = MSDWildChunks(data_path=data_path, partition_path=partition_path_train, subset=1.0)
-    # val_dataset= MSDWildChunks(data_path=data_path, partition_path=partition_path_val, subset=1.0)
+# data_path = "preprocessed"
+# partition_path_train = "data_sample/few_train.rttm"
+# partition_path_val = "data_sample/few_train.rttm"
 
-    # train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=train_dataset.build_batch)
-    # val_loader=DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=val_dataset.build_batch)
+# full_dataset = MSDWildChunks(
+#     data_path=data_path, partition_path=partition_path_train, subset=1.0
+# )
 
-    full_dataset = MSDWildChunks(
-        data_path=S3_VIDEO_DIR,
-        data_bucket=S3_BUCKET_NAME,
-        partition_path=partition_path_train,
-        subset=0.5,
-        refresh_fileset=False,
-    )
+# dataset_size = len(full_dataset)
+# indices = list(range(dataset_size))
+# random.shuffle(indices)
 
-    dataset_size = len(full_dataset)
-    indices = list(range(dataset_size))
-    random.shuffle(indices)
+# # 80/20 split
+# split = int(0.8 * dataset_size)
+# train_indices = indices[:split]
+# val_indices = indices[split:]
 
-    # 80/20 split
-    split = int(0.8 * dataset_size)
-    train_indices = indices[:split]
-    val_indices = indices[split:]
+# train_subset = Subset(full_dataset, train_indices)
+# val_subset = Subset(full_dataset, val_indices)
 
-    train_subset = Subset(full_dataset, train_indices)
-    val_subset = Subset(full_dataset, val_indices)
+# train_loader = DataLoader(
+#     train_subset,
+#     batch_size=4,
+#     shuffle=True,  # we can still shuffle
+#     collate_fn=full_dataset.build_batch,
+# )
 
-    train_loader = DataLoader(
-        train_subset,
-        batch_size=64,
-        shuffle=True,  # we can still shuffle
-        collate_fn=full_dataset.build_batch,
-    )
+# val_loader = DataLoader(
+#     val_subset, batch_size=4, shuffle=False, collate_fn=full_dataset.build_batch
+# )
 
-    val_loader = DataLoader(
-        val_subset, batch_size=64, shuffle=False, collate_fn=full_dataset.build_batch
-    )
 
-    print(f"Train size: {len(train_subset)}   Val size: {len(val_subset)}")
+# print(f"Train size: {len(train_subset)}   Val size: {len(val_subset)}")
 
-    for batch_idx, (visual_data, audio_data, is_speaking) in enumerate(train_loader):
-        print(f"\n--- Batch {batch_idx} ---")
-        print(f"visual_data shape: {visual_data.shape}")
-        print(f"audio_data shape:  {audio_data.shape}")
-        print(f"is_speaking shape: {is_speaking.shape}")
+# for batch_idx, (visual_data, lip_data, audio_data, is_speaking) in enumerate(
+#     train_loader
+# ):
+#     print(f"\n--- Batch {batch_idx} ---")
+#     print(f"visual_data shape: {visual_data.shape}")
+#     print(f"lip_data shape: {lip_data.shape}")
+#     print(f"audio_data shape:  {audio_data.shape}")
+#     print(f"is_speaking shape: {is_speaking.shape}")
 
-        # If you just want to check the first batch, break after printing:
-        break
+#     # If you just want to check the first batch, break after printing:
+#     break
 
-    model = VisualOnlyModel(embedding_dims=512, num_classes=2)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
-    criterion = DiarizationLoss(0.5, 0.5)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", factor=0.1, patience=2, threshold=0.01
-    )
-    start_epoch = 0
-    final_epoch = 10
-    metrics = {}
-    best_valid_acc = 0
-    for epoch in range(start_epoch, final_epoch):
-        print("\nEpoch {}/{}".format(epoch + 1, final_epoch))
-        # train
-        curr_lr = float(scheduler.get_last_lr()[0])
-        metrics.update({"lr": curr_lr})
-        train_acc, train_loss = train_epoch(model, train_loader, optimizer, criterion)
-        print(
-            "\nEpoch {}/{}: \nTrain Cls. Acc {:.04f}%\t Train Cls. Loss {:.04f}\t Learning Rate {:.04f}".format(
-                epoch + 1, final_epoch, train_acc, train_loss, curr_lr
-            )
-        )
-        metrics.update(
-            {
-                "train_cls_acc": train_acc,
-                "train_loss": train_loss,
-            }
-        )
-        # validation
-        valid_acc, valid_loss = evaluate_epoch(model, val_loader, criterion)
-        print(
-            "Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(
-                valid_acc, valid_loss
-            )
-        )
-        metrics.update(
-            {
-                "valid_cls_acc": valid_acc,
-                "valid_loss": valid_loss,
-            }
-        )
-        epoch_ckpt_path = Path(CHECKPOINT_PATH, f"epoch_{epoch+1}.pth")
-        save_model(model, metrics, epoch, epoch_ckpt_path)
-        print(f"Saved checkpoint for epoch {epoch+1}")
+# model = VisualOnlyModel(embedding_dims=512) 
 
-        # save best model
-        if valid_acc >= best_valid_acc:
-            best_valid_acc = valid_acc
-            model_path = Path(CHECKPOINT_PATH, f"best_visual.pth")
-            save_model(model, metrics, epoch, model_path)
-            print("Saved best model")
+# optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+# criterion = DiarizationLoss(0.5, 0.5)
+# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+#     optimizer, "min", factor=0.1, patience=2, threshold=0.01
+# )
+# start_epoch = 0
+# final_epoch = 10
+# metrics = {}
+# best_valid_acc = 0
 
-        # You may want to call some schedulers inside the train function. What are these?
-        if scheduler is not None:
-            scheduler.step(valid_loss)
+# for epoch in range(start_epoch, final_epoch):
+#     print("\nEpoch {}/{}".format(epoch + 1, final_epoch))
+#     # train
+#     curr_lr = float(scheduler.get_last_lr()[0])
+#     metrics.update({"lr": curr_lr})
+#     train_acc, train_loss = train_epoch(model, train_loader, optimizer, criterion)
+#     print(
+#         "\nEpoch {}/{}: \nTrain Cls. Acc {:.04f}%\t Train Cls. Loss {:.04f}\t Learning Rate {:.04f}".format(
+#             epoch + 1, final_epoch, train_acc, train_loss, curr_lr
+#         )
+#     )
+#     metrics.update(
+#         {
+#             "train_cls_acc": train_acc,
+#             "train_loss": train_loss,
+#         }
+#     )
+#     # validation
+#     valid_acc, valid_loss = evaluate_epoch(model, val_loader, criterion)
+#     print("Val Cls. Acc {:.04f}%\t Val Cls. Loss {:.04f}".format(valid_acc, valid_loss))
+#     metrics.update(
+#         {
+#             "valid_cls_acc": valid_acc,
+#             "valid_loss": valid_loss,
+#         }
+#     )
+#     epoch_ckpt_path = Path(CHECKPOINT_PATH, f"epoch_{epoch+1}.pth")
+#     save_model(model, metrics, epoch, epoch_ckpt_path)
+#     print(f"Saved checkpoint for epoch {epoch+1}")
 
-    # save last model
-    model_path = Path(CHECKPOINT_PATH, f"last_visual.pth")
-    save_model(model, metrics, epoch, model_path)
-    print("Saved best model")
+#     # save best model
+#     if valid_acc >= best_valid_acc:
+#         best_valid_acc = valid_acc
+#         model_path = Path(CHECKPOINT_PATH, f"best_visual.pth")
+#         save_model(model, metrics, epoch, model_path)
+#         print("Saved best model")
+
+#     if (epoch + 1) % 3 == 0:
+#         save_model(model, metrics, epoch, model_path)
+
+#     # You may want to call some schedulers inside the train function. What are these?
+#     if scheduler is not None:
+#         scheduler.step(valid_loss)
+
+# # save last model
+# model_path = Path(CHECKPOINT_PATH, f"last_visual.pth")
+# save_model(model, metrics, epoch, model_path)
+# print("Saved best model")

@@ -135,11 +135,13 @@ class UpfrontNPZDataset(Dataset):
     def __init__(
         self,
         npz_dir: str,
-        num_batches: int,
-        batch_size: int,
         bucket: str,
+        visual_type: str = "face",
+        start=0,
+        end=-1,
     ):
         self.samples = []
+        self.visual_type = visual_type
         # Load all files up front
         s3 = boto3.client("s3")
         paginator = s3.get_paginator("list_objects_v2")
@@ -152,7 +154,11 @@ class UpfrontNPZDataset(Dataset):
             for obj in page["Contents"]
             if obj["Key"].endswith(".npz")
         ]
-        for i, path in enumerate(npz_file_paths):
+        if end == -1:
+            end = len(self.npz_file_paths) + 1
+        self.npz_file_paths = self.npz_file_paths[start:end]
+        
+        for i, path in enumerate(self.npz_file_paths):
             print(bucket, path)
             data = load_npz_from_s3(
                 bucket=bucket, key=path, visual_type=self.visual_type
@@ -173,3 +179,16 @@ class UpfrontNPZDataset(Dataset):
 
     def __getitem__(self, idx: int):
         return self.samples[idx]
+
+    def collate_fn(self, batch):
+        # Extract each feature: do the zip thing
+        video_data, audio_data, is_speaking = list(zip(*batch))
+        video_data = torch.stack(video_data)
+        audio_data = torch.stack(audio_data)
+        is_speaking = torch.tensor(is_speaking)
+        batch_data = {
+            "video_data": video_data,
+            "audio_data": audio_data,
+            "labels": is_speaking,
+        }
+        return batch_data
