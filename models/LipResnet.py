@@ -3,18 +3,21 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
+
 class VisualEmbedding(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.model = ResNetModel.from_pretrained("microsoft/resnet-34")
+
     def forward(self, x):
         pixel_values = self.image_process(x)
         with torch.no_grad():
             outputs = self.model(pixel_values=pixel_values)
             embeddings = outputs.last_hidden_state
-            embeddings = F.adaptive_avg_pool2d(embeddings, (1, 1))  
+            embeddings = F.adaptive_avg_pool2d(embeddings, (1, 1))
             embeddings = embeddings.squeeze(-1).squeeze(-1)
         return embeddings
+
     def image_process(self, bbox):
         if bbox.min() < 0 or bbox.max() > 1:
             bbox = (bbox - bbox.min()) / (bbox.max() - bbox.min())
@@ -24,19 +27,20 @@ class VisualEmbedding(torch.nn.Module):
         pixel_values = (bbox_tensor - mean) / std
         return pixel_values
 
-class VisualFullModel(torch.nn.Module):
-   def __init__(self, embedding_dim=512):
-      super().__init__()
-      self.visual_encoder = VisualEmbedding()
-      self.classifier = torch.nn.Linear(embedding_dim, 1)
 
-   def forward(self, x):
-      embedding = self.visual_encoder(x)
-      logits = self.classifier(embedding)
-      logits = logits.squeeze(1)
-      probs = torch.sigmoid(logits)
-      return embedding, probs
-    
+class VisualFullModel(torch.nn.Module):
+    def __init__(self, embedding_dim=512):
+        super().__init__()
+        self.visual_encoder = VisualEmbedding()
+        self.classifier = torch.nn.Linear(embedding_dim, 1)
+
+    def forward(self, x):
+        embedding = self.visual_encoder(x)
+        logits = self.classifier(embedding)
+        logits = logits.squeeze(1)
+        probs = torch.sigmoid(logits)
+        return embedding, probs
+
 
 ##TESTING
 # data_path = '../preprocessed/00001/Chunk_1/face_0.npy'
@@ -49,5 +53,3 @@ class VisualFullModel(torch.nn.Module):
 
 # print(test_full[1].size())
 # print(test_full[1])
-    
-    

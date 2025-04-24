@@ -73,7 +73,7 @@ def create_pairs() -> None:
             with open("error.txt", "a") as f:
                 f.write(f"[VideoId]: {video_id}\n")
                 f.write(f"[Unhandled Error] {repr(e)}\n")
-                f.write(traceback.format_exc()) 
+                f.write(traceback.format_exc())
             print(f"Error fetching Video {video_id}:", str(e))
 
     if face_buf:

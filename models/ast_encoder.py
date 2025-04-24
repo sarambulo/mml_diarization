@@ -4,15 +4,19 @@ import torchaudio.transforms as AT
 from torch.utils.data import Dataset
 from ast_models import ASTModel
 
+
 class AudioASTEncoder(nn.Module):
     def __init__(self, embedding_dims=768):
         super().__init__()
         self.ast_model = ASTModel(
-            label_dim=527,  
-            fstride=10, tstride=10,
-            input_fdim=128, input_tdim=1024,
-            imagenet_pretrain=True, audioset_pretrain=True,
-            model_size='base384'
+            label_dim=527,
+            fstride=10,
+            tstride=10,
+            input_fdim=128,
+            input_tdim=1024,
+            imagenet_pretrain=True,
+            audioset_pretrain=True,
+            model_size="base384",
         )
         self.embedding_dims = embedding_dims
 
@@ -33,7 +37,7 @@ class AudioASTEncoder(nn.Module):
         x = v.norm(x)
         x = (x[:, 0] + x[:, 1]) / 2  # [B, 768] — the embedding
 
-        return torch.nn.functional.normalize(x, dim=-1)  
+        return torch.nn.functional.normalize(x, dim=-1)
 
 
 class AudioTripletDatasetWithLabels(Dataset):
@@ -46,7 +50,7 @@ class AudioTripletDatasetWithLabels(Dataset):
             n_fft=400,
             hop_length=160,
             win_length=400,
-            pad_mode="reflect"
+            pad_mode="reflect",
         )
 
     def __len__(self):

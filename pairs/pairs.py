@@ -184,7 +184,9 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_frame_id"].append(neg_frame)
             else:
                 with open("skipped.txt", "a") as f:
-                    f.write(f"[Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n")
+                    f.write(
+                        f"[Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n"
+                    )
                 print(
                     f"skipping anchor {anchor_speaker} chunk {current_chunk} frame {current_frame} from speaking frames"
                 )
@@ -211,7 +213,9 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_frame_id"].append(neg_frame)
             else:
                 with open("skipped.txt", "a") as f:
-                    f.write(f"[Non-Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n")
+                    f.write(
+                        f"[Non-Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n"
+                    )
     save_pair_info(pair_info, output_file_path)
     return pair_info
 
