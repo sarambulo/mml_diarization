@@ -48,17 +48,25 @@ class LazyNPZDataset(Dataset):
     def __init__(
         self,
         npz_dir: str,
-        num_batches: int,
         batch_size: int,
         bucket: str,
         shuffle_within_file: bool = False,
         visual_type: str = "face",
+        start=0,
+        end=-1
     ):
-        npz_file_paths = [
-            os.path.join(npz_dir, f"triplet_batch_{str(idx).zfill(5)}.npz")
-            for idx in range(num_batches)
+        s3 = boto3.client("s3")
+        paginator = s3.get_paginator("list_objects_v2")
+        self.npz_file_paths = [
+            obj["Key"]
+            for page in paginator.paginate(Bucket="mmml-proj", Prefix=npz_dir+"/triplet_batch")
+            if "Contents" in page
+            for obj in page["Contents"]
+            if obj["Key"].endswith(".npz")
         ]
-        self.npz_file_paths = npz_file_paths
+        if end==-1: 
+            end = len(self.npz_file_paths) + 1
+        self.npz_file_paths = self.npz_file_paths[start:end]
         self.shuffle_within_file = shuffle_within_file
         self.samples_per_file = batch_size
         self.total_samples = self.samples_per_file * len(self.npz_file_paths)
@@ -129,9 +137,14 @@ class UpfrontNPZDataset(Dataset):
     ):
         self.samples = []
         # Load all files up front
-        npz_file_paths = [
-            os.path.join(npz_dir, f"triplet_batch_{str(idx).zfill(5)}.npz")
-            for idx in range(num_batches)
+        s3 = boto3.client("s3")
+        paginator = s3.get_paginator("list_objects_v2")
+        self.npz_file_paths = [
+            obj["Key"]
+            for page in paginator.paginate(Bucket="mmml-proj", Prefix=npz_dir+"/triplet_batch")
+            if "Contents" in page
+            for obj in page["Contents"]
+            if obj["Key"].endswith(".npz")
         ]
         for i, path in enumerate(npz_file_paths):
             print(bucket, path)
