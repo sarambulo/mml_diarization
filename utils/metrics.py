@@ -1,6 +1,5 @@
 from typing import Dict
-
-# from utils.rttm import rttm_to_annotations
+from utils.rttm import rttm_to_annotations
 from pyannote.metrics.diarization import (
     GreedyDiarizationErrorRate,
     JaccardErrorRate,
@@ -11,7 +10,9 @@ from pyannote.core import Annotation
 from sklearn.metrics import root_mean_squared_error
 
 
-def calculate_metrics_for_video(preds: Annotation, targets: Annotation, der=None, jer=None):
+def calculate_metrics_for_video(
+    preds: Annotation, targets: Annotation, der=None, jer=None
+):
     if not der:
         der = GreedyDiarizationErrorRate()
     if not jer:
@@ -34,12 +35,8 @@ def calculate_metrics_for_video(preds: Annotation, targets: Annotation, der=None
 
     videoMetrics["JER"] = jer(preds, targets)
 
-    videoMetrics['Predicted Num Speakers'] = len(preds.labels())
-    videoMetrics['Ground Truth Num Speakers'] = len(targets.labels())
-
-    videoMetrics["Predicted Overlapping Ratio"] = compute_overlapping_ratio(preds)
-    videoMetrics["Ground Truth Overlapping Ratio"] = compute_overlapping_ratio(targets)
-
+    videoMetrics["Predicted Num Speakers"] = len(preds.labels())
+    videoMetrics["Ground Truth Num Speakers"] = len(targets.labels())
     return videoMetrics
 
 
@@ -72,13 +69,8 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     metrics = {}
 
     num_speakers_rmse = root_mean_squared_error(
-        y_true=df['Ground Truth Num Speakers'],
-        y_pred=df['Predicted Num Speakers'],
-    )
-
-    overlap_rmse = root_mean_squared_error(
-        y_true=df['Ground Truth Overlapping Ratio'],
-        y_pred=df['Predicted Overlapping Ratio'],
+        y_true=df["Ground Truth Num Speakers"],
+        y_pred=df["Predicted Num Speakers"],
     )
 
     metrics["DER"] = float(df.DER.mean())
@@ -89,27 +81,7 @@ def calculate_metrics_for_dataset(preds_dict, targets_dict):
     metrics["FAR"] = float(df.FAR.mean())
     metrics["SE"] = float(df.SE.mean())
     metrics["SER"] = float(df.SER.mean())
-    metrics["Duration"] = float(df['totalDuration'].mean())
+    metrics["Duration"] = float(df["totalDuration"].mean())
     metrics["Num Speakers RMSE"] = num_speakers_rmse
-    metrics["Overlap RMSE"] = overlap_rmse
 
     return metrics
-
-from pyannote.core import Timeline, Annotation
-
-def compute_overlapping_ratio(annotation: Annotation) -> float:
-    total_duration = annotation.get_timeline().duration()
-    if total_duration == 0:
-        return 0.0
-
-    overlap_timeline = Timeline(uri=annotation.uri)
-
-    for segment in annotation.get_timeline():
-        # Count how many speakers are active in this segment
-        active_speakers = annotation.crop(segment, mode="intersection").labels()
-        if len(active_speakers) > 1:
-            overlap_timeline.add(segment)
-
-    overlap_duration = overlap_timeline.support().duration()
-    return overlap_duration / total_duration
-

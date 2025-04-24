@@ -8,7 +8,7 @@ import sys
 import os
 
 # Get the parent directory of Add_embeds
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 print(parent_dir)
 # Add the parent directory to sys.path
@@ -17,17 +17,19 @@ sys.path.append(parent_dir)
 from datasets.MSDWild import MSDWildFrames
 from audio_train import AudioOnlyTDNN  # Import audio model from wherever it's defined
 
+
 ### Load the trained AudioOnlyTDNN model
 def load_audio_model(checkpoint_path=f"{parent_dir}/checkpoints/best_model.pth"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AudioOnlyTDNN().to(device)
-    
+
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()  # Set to evaluation mode
 
     print(f"Loaded AudioOnlyTDNN model from {checkpoint_path}")
     return model
+
 
 ### Dataset to Extract Audio Embeddings from MSDWildFrames
 class AudioEmbeddingDataset(Dataset):
@@ -36,7 +38,12 @@ class AudioEmbeddingDataset(Dataset):
         self.audio_model = audio_model
         self.device = next(audio_model.parameters()).device
         self.mel_transform = AT.MelSpectrogram(
-            sample_rate=16000, n_mels=40, n_fft=400, hop_length=80, win_length=400, pad_mode="reflect"
+            sample_rate=16000,
+            n_mels=40,
+            n_fft=400,
+            hop_length=80,
+            win_length=400,
+            pad_mode="reflect",
         )
 
     def __len__(self):
@@ -51,24 +58,32 @@ class AudioEmbeddingDataset(Dataset):
                 return None
 
             if audio_segment.shape[-1] == 2:
-                audio_segment = audio_segment.mean(dim=-1, keepdim=True)  # Convert stereo to mono
+                audio_segment = audio_segment.mean(
+                    dim=-1, keepdim=True
+                )  # Convert stereo to mono
 
             if audio_segment.dim() == 1:
                 audio_segment = audio_segment.unsqueeze(0)
 
             audio_segment = audio_segment.squeeze(-1)
-            mel_spectrogram = self.mel_transform(audio_segment).unsqueeze(0).to(self.device)
+            mel_spectrogram = (
+                self.mel_transform(audio_segment).unsqueeze(0).to(self.device)
+            )
 
             with torch.no_grad():
                 embedding = self.audio_model(mel_spectrogram).cpu()
 
             label = torch.tensor(1 if label.sum() > 0 else 0, dtype=torch.float32)
 
-            return embedding.squeeze(0), label  # Return audio embedding instead of raw data
+            return (
+                embedding.squeeze(0),
+                label,
+            )  # Return audio embedding instead of raw data
 
         except Exception as e:
             print(f"Error processing index {index}: {str(e)}")
             return None
+
 
 ### Collate function to handle None values in DataLoader
 def collate_fn(batch):
@@ -82,6 +97,7 @@ def collate_fn(batch):
 
     return inputs, labels
 
+
 ### Multimodal Dataset (Audio + Visual)
 class MultimodalDataset(Dataset):
     def __init__(self, audio_embeddings, visual_embeddings, labels):
@@ -94,6 +110,7 @@ class MultimodalDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.audio_embeddings[idx], self.visual_embeddings[idx], self.labels[idx]
+
 
 ### Multimodal Model
 class AddSimpleMultimodalModel(nn.Module):
@@ -109,7 +126,7 @@ class AddSimpleMultimodalModel(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(fusion_dim, fusion_dim),
-            nn.ReLU()
+            nn.ReLU(),
         )
         self.classifier = nn.Linear(fusion_dim, num_speakers)
 
@@ -129,8 +146,9 @@ class AddSimpleMultimodalModel(nn.Module):
         labels = cluster.fit_predict(embeddings)
         return labels
 
+
 ### Training Function
-def train(model, dataloader, criterion, optimizer, epochs=10, device='cuda'):
+def train(model, dataloader, criterion, optimizer, epochs=10, device="cuda"):
     model.to(device)
     model.train()
     for epoch in range(epochs):
@@ -150,7 +168,8 @@ def train(model, dataloader, criterion, optimizer, epochs=10, device='cuda'):
             total_loss += loss.item()
 
         avg_loss = total_loss / len(dataloader)
-        print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}')
+        print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}")
+
 
 ### Function to Train Multimodal Model
 def when_classify():
@@ -165,7 +184,9 @@ def when_classify():
     audio_dataset = AudioEmbeddingDataset(msd_dataset, audio_model)
 
     # DataLoader
-    train_loader = DataLoader(audio_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
+    train_loader = DataLoader(
+        audio_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn
+    )
 
     # Extract embeddings dynamically
     audio_embeddings, labels = [], []
@@ -194,10 +215,11 @@ def when_classify():
     # Train
     train(model, dataloader, criterion, optimizer, epochs=20, device=device)
 
+
 ### Function to Perform Clustering
 def when_cluster():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     # Load Audio Model
     audio_model = load_audio_model()
 
@@ -207,7 +229,9 @@ def when_cluster():
     audio_dataset = AudioEmbeddingDataset(msd_dataset, audio_model)
 
     # DataLoader
-    train_loader = DataLoader(audio_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
+    train_loader = DataLoader(
+        audio_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn
+    )
 
     # Extract Embeddings
     audio_embeddings = []
@@ -224,6 +248,7 @@ def when_cluster():
     model = AddSimpleMultimodalModel(embedding_dim=512, fusion_dim=512, num_speakers=10)
     speaker_labels = model.predict_speakers(audio_embeddings, visual_embeddings)
     print("Predicted Speaker Labels:", speaker_labels)
+
 
 if __name__ == "__main__":
     print("Classification:")

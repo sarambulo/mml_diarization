@@ -6,7 +6,14 @@ import os
 from pathlib import Path
 
 
-def plot_speaker_timeline_clamped(rttm_path, start_time, end_time, num_speakers, speaker_mapping=None, output_file=None):
+def plot_speaker_timeline_clamped(
+    rttm_path,
+    start_time,
+    end_time,
+    num_speakers,
+    speaker_mapping=None,
+    output_file=None,
+):
     """
     Visualize speaker segments from RTTM file with timeline clamped to a specific time range.
 
@@ -47,7 +54,7 @@ def plot_speaker_timeline_clamped(rttm_path, start_time, end_time, num_speakers,
         ax.broken_barh(
             [(start, end - start)],
             (y_pos - 0.4, 0.8),
-            facecolors=colors(y_pos) if int(speaker) < true_num_speakers else 'gray',
+            facecolors=colors(y_pos) if int(speaker) < true_num_speakers else "gray",
             edgecolor="black",
             linewidth=0.5,
         )
@@ -57,7 +64,7 @@ def plot_speaker_timeline_clamped(rttm_path, start_time, end_time, num_speakers,
     ax.set_yticks(range(num_speakers))
     ax.set_yticklabels(range(num_speakers))
     ax.set_ylim(-0.6, num_speakers - 0.2)
-    ax.set_ylabel('Speaker ID')
+    ax.set_ylabel("Speaker ID")
     ax.set_xlabel("Time (seconds)")
     ax.grid(True, axis="x", linestyle="--", alpha=0.7)
 
@@ -76,12 +83,14 @@ def plot_speaker_timeline_clamped(rttm_path, start_time, end_time, num_speakers,
 
 
 def visualize_all_models(
-        videoId:str, start:float, end:float,
-        num_speakers: int,
-        rttms_paths: Dict[str, str],
-        output_path,
-        speaker_mappings: dict = None
-    ):
+    videoId: str,
+    start: float,
+    end: float,
+    num_speakers: int,
+    rttms_paths: Dict[str, str],
+    output_path,
+    speaker_mappings: dict = None,
+):
     """
     rttms_paths: Dictionary with model_name as key and path to rttms as value
     """
@@ -96,4 +105,3 @@ def visualize_all_models(
             speaker_mapping=speaker_mappings[model_name],
             output_file=output_file,
         )
-

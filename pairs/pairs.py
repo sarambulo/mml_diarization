@@ -70,7 +70,8 @@ def get_speaking_negative_pair(
             if other_speaker_frames:
                 neg_face_id, neg_frame_id, _ = random.choice(other_speaker_frames)
                 return chunk_id, neg_face_id, neg_frame_id
-    return None
+    return None, None, None
+
 
 def get_anchor_speaking_frames(speakers_by_chunk, anchor_id):
     same_speaker_frames = [
@@ -80,16 +81,19 @@ def get_anchor_speaking_frames(speakers_by_chunk, anchor_id):
     ]
     return same_speaker_frames
 
-def get_non_speaking_negative_pair(
-    anchor_speaker_id, current_chunk, chunk_speakers
-):
+
+def get_non_speaking_negative_pair(anchor_speaker_id, current_chunk, chunk_speakers):
     speakers_by_chunk = chunk_speakers[current_chunk]
-    anchor_speaking_frames_ids = get_anchor_speaking_frames(speakers_by_chunk, anchor_speaker_id)
-    
+    anchor_speaking_frames_ids = get_anchor_speaking_frames(
+        speakers_by_chunk, anchor_speaker_id
+    )
+
     other_speaker_frames = [
         (spk, fr)
         for spk, fr, _ in speakers_by_chunk
-        if spk != anchor_speaker_id and fr in anchor_speaking_frames_ids #check that speaker is not anchor (for correct face) and filter for anchor speaking frames (for correct audio)
+        if spk != anchor_speaker_id
+        and fr
+        in anchor_speaking_frames_ids  # check that speaker is not anchor (for correct face) and filter for anchor speaking frames (for correct audio)
     ]
     if other_speaker_frames:  # check if found in same chunk
         neg_face_id, neg_frame_id = random.choice(other_speaker_frames)
@@ -100,7 +104,9 @@ def get_non_speaking_negative_pair(
         ]
         for chunk_id in remaining_chunk_ids:
             speakers_by_chunk = chunk_speakers[chunk_id]
-            anchor_speaking_frames_ids = get_anchor_speaking_frames(speakers_by_chunk, anchor_speaker_id)
+            anchor_speaking_frames_ids = get_anchor_speaking_frames(
+                speakers_by_chunk, anchor_speaker_id
+            )
             other_speaker_frames = [
                 (spk, fr)
                 for spk, fr, _ in speakers_by_chunk
@@ -109,7 +115,7 @@ def get_non_speaking_negative_pair(
             if other_speaker_frames:
                 neg_face_id, neg_frame_id = random.choice(other_speaker_frames)
                 return chunk_id, neg_face_id, neg_frame_id
-    return None
+    return None, None, None
 
 
 # INPUT: is_speaking.csv
@@ -122,6 +128,7 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
         names=["speaker_id", "frame_id", "is_speaking", "video_id", "chunk_id"],
     )
     df = df.loc[:, df.columns != "timestamp"].astype(int)
+    vid = input_file_path.split(os.sep)[4]
 
     speaker_frames, chunk_speakers = create_lookups(df)
     # print(speaker_frames)
@@ -176,9 +183,15 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
                 pair_info["neg_speaker_id"].append(neg_speaker)
                 pair_info["neg_frame_id"].append(neg_frame)
             else:
-                print(f"skipping anchor {anchor_speaker} chunk {current_chunk} frame {current_frame} from speaking frames")
+                with open("skipped.txt", "a") as f:
+                    f.write(
+                        f"[Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n"
+                    )
+                print(
+                    f"skipping anchor {anchor_speaker} chunk {current_chunk} frame {current_frame} from speaking frames"
+                )
 
-        #non-speaking
+        # non-speaking
         for current_chunk, current_frame, is_speaking in anchor_non_speaking_frames:
             # print(f"Non-speaking pairing chunk {current_chunk} frame {current_frame}")
             # get positive pair from any anchor frame
@@ -186,22 +199,23 @@ def choose_and_save_pairs_for_video(input_file_path, output_file_path):
                 current_chunk, current_frame, anchor_non_speaking_frames
             )
             neg_chunk, neg_speaker, neg_frame = get_non_speaking_negative_pair(
-                 anchor_speaker, current_chunk, chunk_speakers
+                anchor_speaker, current_chunk, chunk_speakers
             )  # get negative pair without speaking restriction
             if pos_chunk and neg_chunk:
                 pair_info["chunk_id"].append(current_chunk)
                 pair_info["speaker_id"].append(anchor_speaker)
-                pair_info["is_speaking"].append(0) 
+                pair_info["is_speaking"].append(0)
                 pair_info["frame_id"].append(current_frame)
                 pair_info["pos_chunk_id"].append(pos_chunk)
                 pair_info["pos_frame_id"].append(pos_frame)
                 pair_info["neg_chunk_id"].append(neg_chunk)
                 pair_info["neg_speaker_id"].append(neg_speaker)
                 pair_info["neg_frame_id"].append(neg_frame)
-            # else:
-            #     print(
-            #         f"No pair found: Pos Found = {pos_chunk!=None} Neg Found = {neg_chunk!=None}"
-            #     )
+            else:
+                with open("skipped.txt", "a") as f:
+                    f.write(
+                        f"[Non-Speaking] Skipped video {vid} chunk {current_chunk} speaker {anchor_speaker} frame {current_frame}\n"
+                    )
     save_pair_info(pair_info, output_file_path)
     return pair_info
 
@@ -215,6 +229,5 @@ def save_pair_info(pair_info_dict, output_file_path):
     pairs_df.to_csv(output_file_path, index=False)
 
 
-
-#testing
-# choose_and_save_pairs_for_video("../preprocessed/00001/is_speaking.csv", "pairs_test.csv")
+# testing
+# choose_and_save_pairs_for_video("../preprocessed_2/00001/is_speaking.csv", "pairs_test.csv")

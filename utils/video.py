@@ -6,6 +6,11 @@ import itertools
 import pandas as pd
 import numpy as np
 import torchvision.transforms.v2 as ImageTransforms
+import boto3
+import os
+
+s3 = boto3.client("s3")
+bucket_name = "mmml-proj"
 
 
 def read_video(
@@ -28,24 +33,33 @@ def read_video(
     if seconds <= 0:
         raise ValueError("seconds should be >0")
 
-    if not Path(video_path).exists():
-        raise FileExistsError(f"file {video_path} not found")
+    # if not Path(video_path).exists():
+    #     raise FileExistsError(f"file {video_path} not found")
     video_path = str(video_path)
+    # print(video_path)
+    s3.download_file(bucket_name, video_path, video_path)
 
+    print(video_path)
     # Create a streams to read the video and audio
-    video_stream = VideoReader(video_path, stream='video')
-    audio_stream = VideoReader(video_path, stream='audio')
+    video_stream = VideoReader(video_path, stream="video")
+    audio_stream = VideoReader(video_path, stream="audio")
     metadata = video_stream.get_metadata()
     metadata = {
         "fps": metadata["video"]["fps"][0],
         "duration": metadata["video"]["duration"][0],
         "sampling_rate": metadata["audio"]["framerate"][0],
     }
-    chunk_generator = generate_chunks(video_stream=video_stream, audio_stream=audio_stream, seconds=seconds)
+    print(metadata)
+    chunk_generator = generate_chunks(
+        video_stream=video_stream, audio_stream=audio_stream, seconds=seconds
+    )
+    os.remove(video_path)
     return chunk_generator, metadata
 
 
-def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, seconds: float):
+def generate_chunks(
+    video_stream: VideoReader, audio_stream: VideoReader, seconds: float
+):
     """
     Generator that yields consecutive chunks of 'seconds' duration
     from the given video_stream. Each yield is:
@@ -60,7 +74,7 @@ def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, second
     start = 0.0  # where our current chunk begins
     frame_counter = 0
     duration = video_stream.get_metadata()["video"]["duration"][0]
-
+    # print("Start Chunk Generation")
     while True:
         if start > duration:
             break
@@ -69,7 +83,7 @@ def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, second
         video_frames = []
         video_timestamps = []
         video_frame_ids = []
-        for video_frame in itertools.takewhile(lambda x: x['pts'] < end, video_stream):
+        for video_frame in itertools.takewhile(lambda x: x["pts"] < end, video_stream):
             video_frames.append(video_frame["data"])
             video_timestamps.append(video_frame["pts"])
             video_frame_ids.append(frame_counter)
@@ -78,7 +92,7 @@ def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, second
         # Gather audio frames
         # NOTE: In practice, you'd handle audio carefully to match the chunk boundaries.
         audio_frames = []
-        for audio_frame in itertools.takewhile(lambda x: x['pts'] < end, audio_stream):
+        for audio_frame in itertools.takewhile(lambda x: x["pts"] < end, audio_stream):
             audio_frames.append(audio_frame["data"])
 
         # If we didn't get any video frames, we've likely reached the end
@@ -96,6 +110,7 @@ def generate_chunks(video_stream: VideoReader, audio_stream: VideoReader, second
 
         # Advance start time for the next chunk
         start = end
+    # print("Chunk Generation Complete")
 
 
 def downsample_video(
@@ -127,8 +142,8 @@ def parse_bounding_boxes(bounding_boxes_path: str) -> Dict[int, Dict[int, Dict]]
     Read the file with the bounding boxes and return a nested dictionary with frame_id as first level keys,
     face_ids as second level keys and bounding boxes coordinates as values
     """
-    if not Path(bounding_boxes_path).exists():
-        raise FileExistsError(f"Bounding boxes file {bounding_boxes_path} not found")
+    # if not Path(bounding_boxes_path).exists():
+    #     raise FileExistsError(f"Bounding boxes file {bounding_boxes_path} not found")
     # Read CSV with no headers (ensure all rows are treated as data)
     df = pd.read_csv(bounding_boxes_path, header=None)
 

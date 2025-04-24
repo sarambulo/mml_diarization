@@ -5,11 +5,13 @@ import torch
 from models.ast_encoder import AudioASTEncoder  # your encoder wrapper
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # from utils.metrics import rttm_to_annotations, calculate_metrics_for_dataset
 from pathlib import Path
 from datasets.MSDWild import MSDWildChunks
 from models.audio_model import AudioTripletDatasetWithLabels  # your existing dataset
+
 
 def generate_ast_embeddings_from_msdwild():
     data_path = "./preprocessed"
@@ -30,7 +32,7 @@ def generate_ast_embeddings_from_msdwild():
         for sample in tqdm(dataloader):
             if sample is None or sample[0] is None:
                 continue
-            
+                
             _, audio_batch, label = sample
             
             anchors   = audio_batch[:, 0, :, :]
@@ -41,14 +43,16 @@ def generate_ast_embeddings_from_msdwild():
             # anchor, _, _, label = sample
 
             embedding = encoder(all_audios).cpu()
+
             all_embeddings.append(embedding.squeeze(0))
             all_labels.append(label.item())
 
-    torch.save({
-        "embeddings": torch.stack(all_embeddings),
-        "labels": torch.tensor(all_labels)
-    }, "msdwild_ast_embeddings.pt")
+    torch.save(
+        {"embeddings": torch.stack(all_embeddings), "labels": torch.tensor(all_labels)},
+        "msdwild_ast_embeddings.pt",
+    )
 
     print(f"Saved {len(all_embeddings)} embeddings to msdwild_ast_embeddings.pt")
+
 
 generate_ast_embeddings_from_msdwild()
