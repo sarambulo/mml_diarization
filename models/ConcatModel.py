@@ -25,7 +25,7 @@ class ConcatenationFusionModel(nn.Module):
         fusion_type="concat",
         tensor_fusion_dim=64,
     ):
-        super(ConcatenationFusionModel, self).__init__()
+        super().__init__()
         if audio_model is None:
             self.audio_encoder = CompactAudioEmbedding(
                 input_dim=40, embedding_dim=512, dropout_rate=0.3
@@ -37,8 +37,8 @@ class ConcatenationFusionModel(nn.Module):
         else:
             self.visual_encoder = visual_model
 
-        audio_dim = 512  # self.audio_encoder.fc2.out_features
-        visual_dim = 512  # self.visual_encoder.model[-3].out_channels
+        audio_dim = 768  # self.audio_encoder.fc2.out_features
+        visual_dim = 1024  # self.visual_encoder.model[-3].out_channels
 
         if fusion_type == "concat":
             input_dim = audio_dim + visual_dim
@@ -54,14 +54,30 @@ class ConcatenationFusionModel(nn.Module):
             assert audio_dim == visual_dim
             input_dim = audio_dim
         else:
-            raise ValueError("choose 'concat' or 'tensor' for fusion type")
-
-        # fusion model
-        self.fusion_linear = nn.Linear(input_dim, fusion_dim)
-        self.bn = nn.BatchNorm1d(fusion_dim)
-        self.fusion_embedding = nn.Linear(fusion_dim, embedding_dim)
+            raise ValueError("choose 'concat' or 'te# nsor' for fusion type")
+        
+        self.backbone = nn.Sequential(
+            nn.Linear(input_dim, 1024),
+            nn.BatchNorm1d(1024),
+            nn.GELU(),
+            nn.Dropout(0.25),
+            
+            nn.Linear(1024, 768),
+            nn.BatchNorm1d(768),
+            nn.GELU(),
+            nn.Dropout(0.25),
+            
+            nn.Linear(768, 512),
+            nn.BatchNorm1d(512),
+            nn.GELU(),
+            nn.Dropout(0.25),
+            
+            nn.Linear(512, embedding_dim),
+            nn.BatchNorm1d(embedding_dim),
+            nn.GELU(),
+            nn.Dropout(0.25)
+        )
         self.classifier = nn.Linear(embedding_dim, 1)
-        self.dropout = nn.Dropout(0.25)
 
         # freeze the parameters of the audio and visual encoders
         for _, param in self.audio_encoder.named_parameters():
@@ -141,15 +157,9 @@ class ConcatenationFusionModel(nn.Module):
             combined_embedding = self.tensor_fusion(audio_embedding, video_embedding)
         elif self.fusion_type == "additive":
             combined_embedding = audio_embedding + video_embedding
-        else:
-            raise ValueError("choose 'concat', 'tensor', or 'additive' for fusion type")
+        
 
-        # fusion model
-        fusion = self.fusion_linear(combined_embedding)
-        fusion = F.relu(self.bn(fusion))
-        fusion = self.dropout(fusion)
-
-        fusion_embedding = self.fusion_embedding(fusion)
+        fusion_embedding = self.backbone(combined_embedding)
         fusion_embedding = F.normalize(fusion_embedding, p=2, dim=1)
 
         # classification layer

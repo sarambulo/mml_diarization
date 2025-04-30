@@ -49,17 +49,13 @@ def preprocess_face_batch(face_batch):
 def extract_and_crop_lips(face_batch, predictor, target_size=(64, 32)):
     lips_batch = []
 
-    face_batch_clean = preprocess_face_batch(face_batch)
-
-    for face in face_batch_clean:
+    for face in face_batch:
         x_min, y_min, x_max, y_max = extract_lip_coordinates(face, predictor)
         lip = face[y_min:y_max, x_min:x_max]
         lip_resized = cv2.resize(lip, target_size, interpolation=cv2.INTER_CUBIC)
         lips_batch.append(lip_resized)
 
     lips_batch = np.array(lips_batch)
-    lips_batch = np.transpose(lips_batch, (0, 3, 1, 2))
-
     return lips_batch
 
 
@@ -68,20 +64,13 @@ def main():
     predictor_path = "shape_predictor_68_face_landmarks_GTX.dat"
     predictor = dlib.shape_predictor(predictor_path)
     face_batch = np.load(data_path)
+    face_batch_processed = preprocess_face_batch(face_batch)
 
-    # paginator = s3.get_paginator('list_objects_v2')
-    # face_files = [
-    #     obj['Key']
-    #     for page in paginator.paginate(Bucket=bucket_name, Prefix = 'preprocessed/')
-    #     if 'Contents' in page
-    #     for obj in page['Contents']
-    #     if obj['Key'].endswith(".mp4")
-    # ]
-    # for f in face_files:
+    lip_target_size = (64, 32)
 
-    #     face_batch_processed = preprocess_face_batch(face_batch)
-    #     lip_target_size = (64, 32)
-    lips_batch = extract_and_crop_lips(face_batch, predictor)
+    lips_batch = extract_and_crop_lips(face_batch_processed, predictor, lip_target_size)
+
+    # Save standardized lip batch
     np.save("lip_0.npy", lips_batch)
 
 

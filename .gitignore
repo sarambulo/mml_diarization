@@ -180,4 +180,5 @@ cython_debug/
 .pypirc
 
 # Mac Stuff
-.DS_Store
+.DS_Storeeda/*
+eda/*

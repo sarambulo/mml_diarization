@@ -75,188 +75,41 @@ class ResNet34(torch.nn.Module):
             ResNetBlock(256, 512, kernel_size=3, stride=2),
             ResNetBlock(512, 512, kernel_size=3, stride=1),
             ResNetBlock(512, 512, kernel_size=3, stride=1),
-            ResNetBlock(512, embedding_dims, kernel_size=3, stride=1),
             # Flattening
             torch.nn.AdaptiveAvgPool2d((1, 1)),
             torch.nn.Flatten(),
+            torch.nn.Linear(512, embedding_dims),
         )
 
     def forward(self, X):
         return self.model(X)
 
 
+class VisualSpeakerEncoder(torch.nn.Module):
+   def __init__(self, embedding_dim:int = 512, weights_path: str = 'models/visual_encoder.pth'):
+      super().__init__()
+      self.backbone = ResNet34(embedding_dim)
+      if weights_path:
+         model_state_dict = torch.load(weights_path, weights_only=False)
+         model_state_dict = {key:model_state_dict[key] for key in model_state_dict if key.startswith('backbone')}
+         self.load_state_dict(model_state_dict)
+         self.backbone.requires_grad_(False)
+   def forward(self, X):
+      return self.backbone(X)
+
 class VisualOnlyModel(torch.nn.Module):
-    def __init__(self, embedding_dims, num_classes):
-        super().__init__()
-        self.visual_encoder = ResNet34(embedding_dims)
-        self.classifier = torch.nn.Linear(embedding_dims, 1)
+   def __init__(self, embedding_dim, weights_path: str = 'models/visual_encoder.pth'):
+      super().__init__()
+      self.backbone = ResNet34(embedding_dim)
+      self.classifier = torch.nn.Linear(embedding_dim, 1)
+      if weights_path:
+         checkpoint = torch.load(weights_path, weights_only=False)
+         model_state_dict = checkpoint['model_state_dict']
+         self.load_state_dict(model_state_dict)
 
-    def forward(self, features):
-        X = features[2]
-        embedding = self.visual_encoder(X)
-        logits = self.classifier(embedding)
-        logits = logits.squeeze(1)
-        return embedding, logits
-
-    @torch.no_grad()
-    def predict_frame(self, X):
-        # Set eval mode
-        self.eval()
-        # Call forward with no gradients and in inference mode
-        with torch.inference_mode():
-            embedding, active_speaker = self.forward(X)
-        return embedding, active_speaker
-
-    def agg_clustering(self, embeddings, n_faces):
-        clustering = AgglomerativeClustering(
-            n_clusters=n_faces, metric="euclidean", linkage="ward"
-        )
-
-        cluster_labels = clustering.fit_predict(embeddings)
-        return cluster_labels
-
-    # @torch.no_grad()
-    # def predict_video(self, X):
-    #    # Set eval mode
-    #    self.eval()
-    #    num_frames = len(X[2])
-
-    #    embeddings = []
-    #    face_indices = []
-    #    frame_indices = []
-    #    active_speakers = []
-
-    #    max_faces = max(len(faces) for faces in X[2])
-
-    #    for t in range(num_frames):
-    #       features = X[0][t], X[1][t], torch.stack(X[2][t], dim=0)
-    #       frame_embeddings, active_logits = self.predict_frame(features)
-    #       faces = features[2][::]
-    #       for face_idx, face in enumerate(faces):
-    #          is_active = torch.argmax(active_logits[face_idx]).item()
-    #          if frame_embeddings is not None:
-    #             embeddings.append(frame_embeddings)
-    #             face_indices.append(face_idx)
-    #             frame_indices.append(t)
-    #             active_speakers.append(is_active)
-
-    #    embeddings_array = torch.concat(embeddings, dim=0).cpu().numpy()
-
-    #    cluster_labels = self.agg_clustering(embeddings_array, max_faces)
-
-    #    face_to_speaker = {}
-
-    #    for i, (frame_idx, face_idx, speaker_id, is_active) in enumerate(zip(frame_indices, face_indices, cluster_labels, active_speakers)):
-    #       if frame_idx not in face_to_speaker:
-    #          face_to_speaker[frame_idx] = {}
-    #       face_to_speaker[frame_idx][face_idx] = (speaker_id, is_active)
-
-    #    results = {
-    #       'speaker_mapping':face_to_speaker,
-    #       'num_speakers':max_faces,
-    #       'num_frames':len(features[0])
-    #    }
-    #    return results
-
-    # def active_frames_by_speaker_id(self, results):
-    #    num_speakers = results['num_speakers']
-    #    speaker_active_frames = {speaker_id: [] for speaker_id in range(num_speakers)}
-
-    #    mapping_dict = results['speaker_mapping']
-
-    #    for frame_idx in range(results['num_frames']):
-    #       if frame_idx not in mapping_dict:
-    #          continue
-
-    #       for face_idx in mapping_dict[frame_idx]:
-    #          speaker_id, is_active = mapping_dict[frame_idx][face_idx]
-    #          if is_active:
-    #             speaker_active_frames[speaker_id].append(frame_idx)
-
-    #    return speaker_active_frames
-
-    # def create_utterances(self, speaker_active_frames, fps=25, min_gap_frames=10):
-    #    utterances = {}
-
-    #    for speaker_id, frames in speaker_active_frames.items():
-    #       frames = sorted(frames)
-    #       speaker_utterances = []
-    #       if not frames:
-    #          utterances[speaker_id] = speaker_utterances
-    #          continue
-    #       current_utterance = {
-    #          'start_frame':frames[0],
-    #          'end_frame': frames[0]
-    #       }
-    #       for i in range(0, len(frames)):
-    #          current_frame = frames[i]
-    #          previous_frame = frames[i-1]
-
-    #          if current_frame <= previous_frame + min_gap_frames:
-    #             #push end forward if it's within the minimum gap
-    #             current_utterance['end_frame'] = current_frame
-    #          else:
-    #             #process + add utterance
-    #             start_time = current_utterance['start_frame'] / fps
-    #             end_time = current_utterance['end_frame'] / fps
-    #             duration = end_time - start_time
-
-    #             current_utterance['start_time'] = start_time
-    #             current_utterance['end_time'] = end_time
-    #             current_utterance['duration'] = duration
-    #             speaker_utterances.append(current_utterance)
-
-    #             #reset
-    #             current_utterance = {
-    #                'start_frame':current_frame,
-    #                'end_frame':current_frame
-    #             }
-
-    #          #process last utternace
-    #          start_time = current_utterance['start_frame'] / fps
-    #          end_time = current_utterance['end_frame'] / fps
-    #          duration = end_time - start_time
-
-    #          current_utterance['start_time'] = start_time
-    #          current_utterance['end_time'] = end_time
-    #          current_utterance['duration'] = duration
-
-    #          speaker_utterances.append(current_utterance)
-
-    #          #filter out lil blips
-    #          min_duration = 0.0
-    #          speaker_utterances = [
-    #                utterance for utterance in speaker_utterances
-    #                if utterance['duration'] >= min_duration
-    #          ]
-
-    #          utterances[speaker_id] = speaker_utterances
-
-    #    return utterances
-
-
-#    def utterances_to_rttm(self, utterances, file_id):
-#       rttm_lines = []
-#       if len(utterances) == 0:
-#          return []
-#       for speaker_id, speaker_utterances in utterances.items():
-#          for utterance in speaker_utterances:
-#                start_time = f"{utterance['start_time']:.6f}"
-#                duration = f"{utterance['duration']:.6f}"
-#                speaker = f"{speaker_id}"
-
-#                rttm_line = f"SPEAKER {file_id:05d} {"0"} {start_time} {duration} {"NA"} {"NA"} {speaker} {"NA"} {"NA"}"
-#                rttm_lines.append(rttm_line)
-
-#       #sort by start_time
-#       rttm_lines.sort(key=lambda x: float(x.split()[3]))
-
-#       return rttm_lines
-
-
-# def predict_to_rttm_full(self, X, file_id):
-#    results = self.predict_video(X)
-#    active_frames = self.active_frames_by_speaker_id(results)
-#    utterances = self.create_utterances(active_frames)
-#    rttm_lines = self.utterances_to_rttm(utterances, file_id)
-#    return rttm_lines
+   def forward(self, x):
+      embedding = self.visual_encoder(x)
+      logits = self.classifier(embedding)
+      logits = logits.squeeze(1)
+      probs = torch.sigmoid(logits)
+      return embedding, probs
